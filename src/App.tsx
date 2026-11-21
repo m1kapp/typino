@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { AppShell, AppShellContent, AppShellHeader, Section, SegmentedControl, Watermark } from "@m1kapp/kit";
-import { chord, noteName, pitch, pressed, split, SONGS } from "./music";
-import { play, unlock, untilBeat } from "./audio";
+import { chord, noteName, pressed, split, SONGS } from "./music";
+import { play, unlock } from "./audio";
 
 const ACCENT = "#c2410c";
 type SongId = (typeof SONGS)[number]["id"];
@@ -47,25 +47,22 @@ function Player() {
     input.current?.focus();
   };
 
+  const ding = (ch: string) => {
+    const notes = chord(ch)!;
+    notes.forEach((n, k) => play(n, k * 0.012, 0.22)); // 살짝 굴려서 한 덩어리로
+    setLast({ ch, notes });
+  };
+
   const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = e.target.value;
-    // 자모 하나 = 음 하나 (작게, 바로)
-    for (const j of pressed(value, v)) play(pitch(j)!, 0, 0.08, 0.6);
-
-    // 다음 글자가 붙는 순간 앞 글자가 확정된다 → 맞았으면 화음
-    if (line && v.length > value.length) {
-      const i = (e.target.selectionStart ?? v.length) - 2;
-      const ch = v[i];
-      if (ch && split(ch)) {
-        if (ch === line[i]) {
-          const notes = chord(ch)!;
-          const w = untilBeat();
-          notes.forEach((n, k) => play(n, w + k * 0.012, 0.2)); // 살짝 굴려서
-          setLast({ ch, notes });
-        } else {
-          play(37, 0, 0.15, 0.25); // 틀리면 낮고 짧게
-        }
-      }
+    // 글자 하나 = 띵 하나. 치는 글자가 그 자리 글자와 같아지는 순간 바로 울린다
+    // (다 → 띵, 리 → 띵). 다음 글자로 넘어가길 기다리지 않는다.
+    const i = (e.target.selectionStart ?? v.length) - 1;
+    const ch = v[i];
+    if (line && pressed(value, v).length && ch && split(ch)) {
+      if (ch === line[i]) ding(ch);
+      // 목표와 다른 채로 다음 글자로 넘어가면 그 글자는 틀린 것 — 낮게 툭
+      else if (v.length > value.length && v[i - 1] && v[i - 1] !== line[i - 1]) play(37, 0, 0.15, 0.25);
     }
 
     // 줄을 다 치고 스페이스 → 다음 줄. 스페이스로 조합이 끝난 뒤라 비워도 글자가 안 남는다
@@ -149,8 +146,8 @@ function Player() {
       </div>
 
       <p className="text-xs leading-relaxed text-zinc-400">
-        자모 하나 = 음 하나. 글자가 완성되면 초성·중성·종성이 한 화음으로 울리고, 받침은 베이스가 됩니다. 음계는 C 펜타토닉이라
-        틀려도 안 어긋나고, 화음은 8분음표 박자에 맞춰 떨어져요.
+        글자 하나 = 띵 하나. 글자를 다 치는 순간 초성·중성·종성이 한 화음으로 울리고, 받침은 베이스가 됩니다. 음계는 C 펜타토닉이라
+        어떤 글자든 안 어긋나요.
       </p>
     </Section>
   );

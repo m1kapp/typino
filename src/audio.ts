@@ -1,8 +1,6 @@
 // Web Audio 로 피아노 비슷한 소리. 샘플 파일 없이 삼각파 + 배음 하나.
 
 let ctx: AudioContext | null = null;
-let t0 = 0;
-const STEP = 60 / 96 / 2; // 96 BPM 8분음표
 
 /** 탭 같은 사용자 동작 안에서 불러야 iOS 가 소리를 연다 */
 export function unlock() {
@@ -11,14 +9,6 @@ export function unlock() {
   if (s) s.type = "playback";
   ctx ??= new AudioContext();
   void ctx.resume();
-  t0 = ctx.currentTime;
-}
-
-/** 다음 박자 칸까지 남은 초 — 치는 손이 흔들려도 화음은 박자에 떨어진다 */
-export function untilBeat() {
-  if (!ctx) return 0;
-  const e = ctx.currentTime - t0;
-  return Math.ceil(e / STEP) * STEP - e;
 }
 
 export function play(midi: number, when = 0, gain = 0.25, len = 1.6) {
