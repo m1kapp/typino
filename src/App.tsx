@@ -30,6 +30,8 @@ function Player() {
   const [last, setLast] = useState<{ label: string; note: number } | null>(null);
   const [played, setPlayed] = useState<{ label: string; note: number }[]>([]);
   const cur = useRef<string | null>(null); // 자유 모드: 지금 깔린 반주 코드
+  const timers = useRef<number[]>([]); // 들어보기 예약
+  const [demo, setDemo] = useState(false);
 
   const free = songId === "free";
   const song = SONGS.find((s) => s.id === songId);
@@ -41,6 +43,9 @@ function Player() {
     setStarted(true);
   };
   const restart = (id = songId) => {
+    timers.current.forEach(clearTimeout);
+    timers.current = [];
+    setDemo(false);
     setSongId(id);
     setRow(0);
     setPos(0);
@@ -57,7 +62,31 @@ function Player() {
     setLast({ label, note });
   };
 
+  // 한 번 들려주기 — 건반에 불을 켜 가며 곡을 끝까지. 타이머로 울려야 탭을 바꾸면 바로 멈춘다
+  const listen = () => {
+    if (!song) return;
+    unlock();
+    setStarted(true);
+    restart();
+    setDemo(true);
+    let t = 300;
+    song.lines.forEach((l, r) => {
+      const p = parse(l);
+      p.notes.forEach((n, i) => {
+        if (n == null) return;
+        timers.current.push(window.setTimeout(() => {
+          ding(p.text[i], n, p.chords[i]);
+          setRow(r);
+          setPos(i);
+        }, t));
+        t += p.beats[i] * BEAT;
+      });
+    });
+    timers.current.push(window.setTimeout(() => restart(), t + 600));
+  };
+
   const hit = (label: string, note: number) => {
+    if (demo) return;
     if (free) {
       // 악보 없이: 높이는 내가 정하고, 반주는 그 음을 품는 코드로 알아서
       const c = fitChord(note, cur.current);
@@ -110,8 +139,13 @@ function Player() {
       ) : (
         song && (
           <div className="flex flex-col gap-2">
-            <div className="text-xs text-zinc-400">
-              {song.by} · {Math.min(row + 1, song.lines.length)}/{song.lines.length}
+            <div className="flex items-center justify-between text-xs text-zinc-400">
+              <span>
+                {song.by} · {Math.min(row + 1, song.lines.length)}/{song.lines.length}
+              </span>
+              <button onClick={demo ? () => restart() : listen} className="font-bold text-[var(--kit-accent)]">
+                {demo ? "■ 멈춤" : "♪ 들어보기"}
+              </button>
             </div>
             <div className="min-h-10 text-[26px] leading-snug font-semibold break-keep">
               {line ? (
@@ -172,6 +206,8 @@ function StartButton({ onClick, label = "▶ 연주 시작" }: { onClick: () => 
 }
 
 // 색은 둘 중 하나만 — 같이 주면 클래스 순서가 아니라 CSS 순서로 이겨서 불이 안 켜진다
+const BEAT = 450; // 들어보기 한 박 (ms)
+
 const KEY = "touch-manipulation select-none rounded-2xl border py-4 text-2xl font-bold ";
 const tone = (lit: boolean) => KEY + (lit ? "border-[var(--kit-accent)] bg-orange-50 text-[var(--kit-accent)]" : "border-zinc-200 bg-white text-zinc-900");
 

@@ -10,6 +10,7 @@ const first = parse(SONGS[0].lines[0]);
 assert.equal(first.text, "도도솔솔 라라솔");
 assert.deepEqual(first.notes, [60, 60, 67, 67, null, 69, 69, 67]);
 assert.deepEqual(first.chords, ["C", null, null, null, null, "F", null, "C"]);
+assert.deepEqual(first.beats, [1, 1, 1, 1, 0, 1, 1, 2]);
 assert.equal(parse("G4 G4 G5").text, "솔솔솔"); // 옥타브는 글에 안 보이고 음에만
 
 // 곡 데이터가 전부 C장조 흰건반 — 계이름으로 칠 수 없는 음이 있으면 안 된다

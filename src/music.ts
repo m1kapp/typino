@@ -1,23 +1,23 @@
 // 화면에 나온 계이름을 치면 그 음이 난다. 도레미를 치면 도레미가 — 자판이 건반이다.
 
-/** 음표는 "G4" 처럼, 띄어쓰기는 "/", 반주 코드는 음 앞에 "[F]". 화면에 보일 계이름은 여기서 만든다 */
+/** 음표는 "G4" 처럼, 길이는 박 수로 "G4:2"(없으면 1박), 띄어쓰기는 "/", 반주 코드는 음 앞에 "[F]". 화면에 보일 계이름은 여기서 만든다 */
 export type Song = { id: string; title: string; by: string; lines: string[] };
 
 // 선율은 저작권이 끝난 것만
 export const SONGS: Song[] = [
   { id: "star", title: "작은 별", by: "프랑스 민요", lines: [
-    "[C]C4 C4 G4 G4 / [F]A4 A4 [C]G4", "[F]F4 F4 [C]E4 E4 / [G]D4 D4 [C]C4",
-    "[C]G4 G4 [F]F4 F4 / [C]E4 E4 [G]D4", "[C]G4 G4 [F]F4 F4 / [C]E4 E4 [G]D4",
-    "[C]C4 C4 G4 G4 / [F]A4 A4 [C]G4", "[F]F4 F4 [C]E4 E4 / [G]D4 D4 [C]C4",
+    "[C]C4 C4 G4 G4 / [F]A4 A4 [C]G4:2", "[F]F4 F4 [C]E4 E4 / [G]D4 D4 [C]C4:2",
+    "[C]G4 G4 [F]F4 F4 / [C]E4 E4 [G]D4:2", "[C]G4 G4 [F]F4 F4 / [C]E4 E4 [G]D4:2",
+    "[C]C4 C4 G4 G4 / [F]A4 A4 [C]G4:2", "[F]F4 F4 [C]E4 E4 / [G]D4 D4 [C]C4:2",
   ] },
   { id: "birthday", title: "생일 축하", by: "힐 자매", lines: [
-    "G4 G4 [C]A4 G4 / C5 [G]B4", "G4 G4 [G]A4 G4 / D5 [C]C5",
-    "G4 G4 [C]G5 E5 / C5 [F]B4 A4", "[F]F5 F5 [C]E5 C5 / [G]D5 [C]C5",
+    "G4:0.75 G4:0.25 [C]A4 G4 / C5 [G]B4:2", "G4:0.75 G4:0.25 [G]A4 G4 / D5 [C]C5:2",
+    "G4:0.75 G4:0.25 [C]G5 E5 / C5 [F]B4 A4:2", "[F]F5:0.75 F5:0.25 [C]E5 C5 / [G]D5 [C]C5:3",
   ] },
   // 원곡 D장조 → C장조. 제1바이올린 첫 세 변주(2분음표 둘, 4분음표 하나)
   { id: "canon", title: "캐논", by: "파헬벨", lines: [
-    "[C]E5 [G]D5 / [Am]C5 [Em]B4 / [F]A4 [C]G4 / [F]A4 [G]B4",
-    "[C]C5 [G]B4 / [Am]A4 [Em]G4 / [F]F4 [C]E4 / [F]F4 [G]D4",
+    "[C]E5:2 [G]D5:2 / [Am]C5:2 [Em]B4:2 / [F]A4:2 [C]G4:2 / [F]A4:2 [G]B4:2",
+    "[C]C5:2 [G]B4:2 / [Am]A4:2 [Em]G4:2 / [F]F4:2 [C]E4:2 / [F]F4:2 [G]D4:2",
     "[C]C4 E4 [G]G4 F4 / [Am]E4 C4 [Em]E4 D4",
     "[F]C4 A3 [C]C4 G4 / [F]F4 A4 [G]G4 F4",
   ] },
@@ -48,15 +48,17 @@ export function parse(line: string) {
   let text = "";
   const notes: (number | null)[] = [];
   const chords: (string | null)[] = [];
+  const beats: number[] = [];
   for (const tok of line.split(" ")) {
-    if (tok === "/") { text += " "; notes.push(null); chords.push(null); continue; }
-    const [, c, name] = /^(?:\[(\w+)\])?(.+)$/.exec(tok)!;
+    if (tok === "/") { text += " "; notes.push(null); chords.push(null); beats.push(0); continue; }
+    const [, c, name, b] = /^(?:\[(\w+)\])?([^:]+)(?::([\d.]+))?$/.exec(tok)!;
     const n = midi(name);
     text += SOLFA[n % 12];
     notes.push(n);
     chords.push(c ?? null);
+    beats.push(b ? Number(b) : 1);
   }
-  return { text, notes, chords };
+  return { text, notes, chords, beats };
 }
 
 /** 친 계이름 글자 → 음. 옥타브는 그 자리 목표 음에 가장 가까운 쪽 */
