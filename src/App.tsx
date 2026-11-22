@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { AppShell, AppShellContent, AppShellHeader, Section, SegmentedControl, Watermark } from "@m1kapp/kit";
 import { chord, fitChord, noteName, parse, solfa, SOLFA, SONGS } from "./music";
-import { play, unlock } from "./audio";
+import { hold, play, unlock } from "./audio";
 
 const ACCENT = "#c2410c";
 
@@ -56,10 +56,12 @@ function Player() {
   };
 
   // 오른손 선율 + 코드가 바뀌는 자리면 왼손 반주
+  // 누르는 동안 이어지는 소리 — 떼는 함수를 돌려준다
   const ding = (label: string, note: number, c: string | null) => {
-    play(note, 0, 0.24);
+    const release = hold(note, 0.24);
     if (c) chord(c).forEach((n, k) => play(n, 0.01, k ? 0.06 : 0.16, 2.4));
     setLast({ label, note });
+    return release;
   };
 
   // 한 번 들려주기 — 건반에 불을 켜 가며 곡을 끝까지. 타이머로 울려야 탭을 바꾸면 바로 멈춘다
@@ -74,42 +76,45 @@ function Player() {
       const p = parse(l);
       p.notes.forEach((n, i) => {
         if (n == null) return;
+        const len = p.beats[i] * BEAT;
         timers.current.push(window.setTimeout(() => {
-          ding(p.text[i], n, p.chords[i]);
+          window.setTimeout(ding(p.text[i], n, p.chords[i]), len * 0.9); // 길이만큼 누르고 뗀다
           setRow(r);
           setPos(i);
         }, t));
-        t += p.beats[i] * BEAT;
+        t += len;
       });
     });
     timers.current.push(window.setTimeout(() => restart(), t + 600));
   };
 
-  const hit = (label: string, note: number) => {
+  const hit = (label: string, note: number): (() => void) | undefined => {
     if (demo) return;
     if (free) {
       // 악보 없이: 높이는 내가 정하고, 반주는 그 음을 품는 코드로 알아서
       const c = fitChord(note, cur.current);
-      ding(label, note, c !== cur.current ? c : null);
+      const release = ding(label, note, c !== cur.current ? c : null);
       cur.current = c;
       setPlayed((p) => [...p.slice(-11), { label, note }]);
-      return;
+      return release;
     }
     if (!line) return;
     const want = line.notes[pos]!;
     if (note % 12 !== want % 12) {
       // 틀려도 누른 음은 난다 — 건반처럼. 자리는 그대로
-      ding(label, solfa(label, want)!, null);
       setMiss(true);
-      return;
+      return ding(label, solfa(label, want)!, null);
     }
     // 맞으면 곡에 적힌 높이로. 계이름엔 옥타브가 없으니 높은 솔·낮은 솔은 곡이 안다
-    ding(label, want, line.chords[pos]);
+    const release = ding(label, want, line.chords[pos]);
     setMiss(false);
     const next = lyric[pos + 1] === " " ? pos + 2 : pos + 1;
-    if (next < lyric.length) return setPos(next);
-    setRow((r) => r + 1);
-    setPos(0);
+    if (next < lyric.length) setPos(next);
+    else {
+      setRow((r) => r + 1);
+      setPos(0);
+    }
+    return release;
   };
 
   return (
@@ -161,13 +166,14 @@ function Player() {
                     }
                   >
                     {c}
+                    {holds(line.beats[i])}
                   </span>
                 ))
               ) : (
                 <span className="text-zinc-900">끝 — 한 곡 완주!</span>
               )}
             </div>
-            <div className="min-h-6 text-base text-zinc-300">{song.lines[row + 1] ? parse(song.lines[row + 1]).text : ""}</div>
+            <div className="min-h-6 text-base text-zinc-300">{song.lines[row + 1] ? withHolds(parse(song.lines[row + 1])) : ""}</div>
           </div>
         )
       )}
@@ -197,6 +203,10 @@ function Player() {
   );
 }
 
+// 2박 이상인 음 뒤에 작대기 — 그만큼 쭉 누르라는 표시
+const holds = (b: number) => "ㅡ".repeat(Math.max(0, Math.round(b) - 1));
+const withHolds = (p: { text: string; beats: number[] }) => [...p.text].map((c, i) => c + holds(p.beats[i])).join("");
+
 function StartButton({ onClick, label = "▶ 연주 시작" }: { onClick: () => void; label?: string }) {
   return (
     <button onClick={onClick} className="rounded-2xl bg-[var(--kit-accent)] py-3.5 text-lg font-bold text-white">
@@ -212,23 +222,32 @@ const KEY = "touch-manipulation select-none rounded-2xl border py-4 text-2xl fon
 const tone = (lit: boolean) => KEY + (lit ? "border-[var(--kit-accent)] bg-orange-50 text-[var(--kit-accent)]" : "border-zinc-200 bg-white text-zinc-900");
 
 /** 전화 키패드처럼 계이름 7개. 자유 모드엔 샵·내림(한 번만)과 옥타브 오르내림까지 */
-function Keypad({ free, hint, onNote }: { free: boolean; hint?: string; onNote: (label: string, note: number) => void }) {
+function Keypad({ free, hint, onNote }: { free: boolean; hint?: string; onNote: (label: string, note: number) => (() => void) | undefined }) {
   const [oct, setOct] = useState(4);
   const [acc, setAcc] = useState(0);
-  // 누르는 순간 소리 — 손을 뗄 때(click)까지 기다리면 건반 같지 않다. 키보드 Enter 는 click 으로
-  const press = (fn: () => void) => ({
+  const held = useRef<(() => void) | null>(null);
+  const up = () => {
+    held.current?.();
+    held.current = null;
+  };
+  // 누르는 순간 소리, 떼는 순간 끝 — 쭉 누르면 길게. 키보드 Enter 는 click 으로 짧게
+  const press = (fn: () => (() => void) | void) => ({
     onPointerDown: (e: React.PointerEvent) => {
       e.preventDefault();
-      fn();
+      up();
+      held.current = fn() ?? null;
     },
+    onPointerUp: up,
+    onPointerLeave: up,
+    onPointerCancel: up,
     onClick: (e: React.MouseEvent) => {
-      if (e.detail === 0) fn();
+      if (e.detail === 0) window.setTimeout(fn() ?? (() => {}), 400);
     },
   });
   const key = (s: string) => (
     <button key={s} className={tone(s === hint)} {...press(() => {
-      onNote(s + (acc > 0 ? "♯" : acc < 0 ? "♭" : ""), 12 * (oct + 1) + SOLFA.indexOf(s) + acc);
       setAcc(0);
+      return onNote(s + (acc > 0 ? "♯" : acc < 0 ? "♭" : ""), 12 * (oct + 1) + SOLFA.indexOf(s) + acc);
     })}>
       {s}
     </button>
