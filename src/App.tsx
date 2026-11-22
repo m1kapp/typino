@@ -22,7 +22,8 @@ export default function App() {
 }
 
 function Player() {
-  const [songId, setSongId] = useState("free");
+  const [songId, setSongId] = useState("star");
+  const [exact, setExact] = useState(false); // 켜면 맞는 계이름만 — 끄면 아무 키나 다다다 쳐도 곡의 다음 음
   const [row, setRow] = useState(0);
   const [pos, setPos] = useState(0); // 줄 안에서 다음에 누를 글자 자리
   const [miss, setMiss] = useState(false);
@@ -81,7 +82,7 @@ function Player() {
     cur.current = null;
     step8.current = 0;
     quiet();
-    if (id !== songId) setDrumOn(id === "free" || id === "mine" || id === "magic" || !!SONGS.find((s) => s.id === id)?.drums); // 곡을 바꿀 때만 — 들어보기로 내 선택이 풀리지 않게
+    if (id !== songId) setDrumOn(id === "free" || id === "mine" || !!SONGS.find((s) => s.id === id)?.drums); // 곡을 바꿀 때만 — 들어보기로 내 선택이 풀리지 않게
   };
 
   // 오른손 선율 + 왼손 반주. 누르는 동안 이어지는 소리 — 떼는 함수를 돌려준다
@@ -129,9 +130,11 @@ function Player() {
     timers.current.push(window.setTimeout(() => restart(), t + 600));
   };
 
-  const hit = (label: string, note: number): (() => void) | undefined => {
+  // force: 타자(키보드·입력칸) — 무슨 글자든 곡의 다음 음
+  const hit = (label: string, note: number, force = false): (() => void) | undefined => {
     if (demo) return;
     if (free) {
+      if (force) return;
       // 악보 없이: 높이는 내가 정하고, 반주는 그 음을 품는 코드로 알아서
       const c = fitChord(note, cur.current);
       const release = ding(label, note, c !== cur.current ? c : null);
@@ -152,13 +155,13 @@ function Player() {
     const l = song.lines[r] ? parse(song.lines[r]) : null;
     if (!l) return;
     const want = l.notes[p]!;
-    if (note % 12 !== want % 12) {
+    if (exact && !force && note % 12 !== want % 12) {
       // 틀려도 누른 음은 난다 — 건반처럼. 자리는 그대로
       setMiss(true);
       return ding(label, solfa(label, want)!, null, false);
     }
     // 맞으면 곡에 적힌 높이로. 계이름엔 옥타브가 없으니 높은 솔·낮은 솔은 곡이 안다
-    const release = ding(label, want, l.chords[p]);
+    const release = ding(l.text[p], want, l.chords[p]);
     setMiss(false);
     // 다음 건반은 이 음의 길이가 다 지나야 켜진다 — 불이 곧 박자
     setRinging(true);
@@ -172,11 +175,37 @@ function Player() {
     return release;
   };
 
+  // 컴퓨터 자판: 아무 글자나 누르면 다음 음, 누르고 있으면 이어짐
+  const hitRef = useRef(hit);
+  hitRef.current = hit;
+  useEffect(() => {
+    const held = new Map<string, () => void>();
+    const down = (e: KeyboardEvent) => {
+      if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || e.key.length !== 1) return;
+      if ((e.target as HTMLElement).closest?.("input, textarea, button")) return; // 입력칸은 제 손으로, 버튼은 Enter·Space 로 눌림
+      e.preventDefault(); // 스페이스로 화면이 내려가지 않게
+      unlock();
+      setStarted(true);
+      const r = hitRef.current("", 0, true);
+      if (r) held.set(e.code, r);
+    };
+    const up = (e: KeyboardEvent) => {
+      held.get(e.code)?.();
+      held.delete(e.code);
+    };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+    };
+  }, []);
+
   return (
     <Section className="flex flex-col gap-6 px-4 pt-4 pb-8">
       {/* 곡이 늘어 한 줄에 다 안 들어간다 — 옆으로 넘긴다 */}
       <div className="scrollbar-hide -mx-4 flex gap-2 overflow-x-auto px-4">
-        {[{ id: "free", title: "자유", by: "악보 없이" }, { id: "magic", title: "같이 치기", by: "두 건반 같이" }, { id: "mine", title: "내 곡", by: "직접 적기" }, ...SONGS].map((t) => (
+        {[{ id: "free", title: "자유", by: "악보 없이" }, { id: "mine", title: "내 곡", by: "직접 적기" }, ...SONGS].map((t) => (
           <button
             key={t.id}
             onClick={() => restart(t.id)}
@@ -188,9 +217,7 @@ function Player() {
         ))}
       </div>
 
-      {songId === "magic" ? (
-        <Magic drumOn={drumOn} setDrumOn={setDrumOn} />
-      ) : free ? (
+      {free ? (
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between text-xs text-zinc-400">
             <span>악보 없이 · 외운 계이름을 눌러 보세요</span>
@@ -237,11 +264,14 @@ function Player() {
       ) : (
         song && (
           <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between text-xs text-zinc-400">
+            <div className="flex flex-wrap items-center justify-between gap-y-1 text-xs text-zinc-400">
               <span>
                 {song.by} · {Math.min(row + 1, song.lines.length)}/{song.lines.length}
               </span>
               <span className="flex gap-4">
+                <button onClick={() => setExact((x) => !x)} className={`font-bold ${exact ? "text-zinc-700" : "text-zinc-300 line-through"}`}>
+                  계이름 맞추기
+                </button>
                 <DrumToggle on={drumOn} set={setDrumOn} />
                 {songId === "mine" && (
                   <button
@@ -298,10 +328,23 @@ function Player() {
         )
       )}
 
-      {edit || songId === "magic" ? null : !started ? (
+      {edit ? null : !started ? (
         <StartButton onClick={start} />
       ) : free || line ? (
-        <Keypad free={free} lit={line && !ringing ? lyric[pos] : undefined} onNote={hit} />
+        <>
+          {!free && (
+            <input
+              placeholder="여기에 아무거나 타자 — 치는 대로 노래가 돼요"
+              onInput={(e) => {
+                window.setTimeout(hit("", 0, true) ?? (() => {}), 350);
+                const el = e.currentTarget;
+                if (!(e.nativeEvent as InputEvent).isComposing && el.value.length > 20) el.value = ""; // 글이 쌓이지 않게
+              }}
+              className="rounded-2xl border border-zinc-200 px-4 py-3 text-base outline-none focus:border-[var(--kit-accent)]"
+            />
+          )}
+          <Keypad free={free} lit={line && !ringing ? lyric[pos] : undefined} onNote={hit} />
+        </>
       ) : (
         <StartButton onClick={() => restart()} label="다시 치기" />
       )}
@@ -316,8 +359,8 @@ function Player() {
       </div>
 
       <p className="text-xs leading-relaxed text-zinc-400">
-        계이름 건반을 누르면 그 음이 나고, 누르는 빠르기가 곧 노래의 박자가 됩니다. 곡에선 다음에 누를 건반이 주황으로
-        표시돼요. 반주는 알아서 깔려요.
+        곡에선 아무 키나 다다다 치면 곡의 다음 음이 나요 — 치는 빠르기가 곧 노래의 박자. 컴퓨터 자판도, 폰 자판도, 아래
+        건반도 다 돼요. 계이름 맞추기를 켜면 주황으로 켜진 건반만 맞아요. 반주는 알아서 깔려요.
       </p>
     </Section>
   );
@@ -439,86 +482,5 @@ function Keypad({ free, lit, oct0 = 4, onNote }: { free: boolean; lit?: string; 
         </>
       )}
     </div>
-  );
-}
-
-// 같이 치기: 마디 첫 음은 두 건반을 같이(코드의 뼈대), 나머지는 한 건반씩. 누를 때만 나아가고 반주는 그 손을 따라온다
-const MAGIC = [
-  { c: "Am", steps: ["라미", "솔", "미", "솔"] },
-  { c: "F", steps: ["파도", "솔", "라", "솔"] },
-  { c: "C", steps: ["도솔", "미", "솔", "미"] },
-  { c: "G", steps: ["레솔", "시", "레", "시"] },
-];
-
-function Magic({ drumOn, setDrumOn }: { drumOn: boolean; setDrumOn: (f: (b: boolean) => boolean) => void }) {
-  const [on, setOn] = useState(false);
-  const [at, setAt] = useState(0); // 처음부터 몇 번째 걸음
-  const [miss, setMiss] = useState(false);
-  const got = useRef(""); // 이번 걸음에서 이미 누른 계이름 — 두 손가락이 같은 순간에 와도 놓치지 않게 ref
-  const [, redraw] = useState(0); // got 이 바뀌면 남은 건반 불을 다시 그린다
-  useEffect(() => () => quiet(), []);
-
-  const bar = MAGIC[Math.floor(at / 4) % MAGIC.length];
-  const s = at % 4;
-  const need = bar.steps[s];
-
-  const onNote = (label: string, note: number) => {
-    const release = hold(note, 0.22);
-    if (!need.includes(label)) {
-      setMiss(true); // 틀려도 소리는 난다. 자리는 그대로
-      return release;
-    }
-    setMiss(false);
-    if (!got.current.includes(label)) got.current += label;
-    redraw((x) => x + 1);
-    if ([...need].every((ch) => got.current.includes(ch))) {
-      comp(bar.c, s); // 왼손: 마디 첫 걸음은 베이스+화음, 다음부터 쿵짝
-      const [, r, t, f] = chord(bar.c);
-      pad([r, t, f, r + 12]);
-      if (drumOn) drum(s === 0 ? "kick" : s === 2 ? "snare" : "hat");
-      got.current = "";
-      setAt((a) => a + 1);
-    }
-    return release;
-  };
-  const show = (st: string) => [...st].join("+");
-
-  return (
-    <>
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between text-xs text-zinc-400">
-          <span>불 켜진 건반을 누르세요 · 두 개면 같이</span>
-          <DrumToggle on={drumOn} set={setDrumOn} />
-        </div>
-        <div className="flex items-baseline gap-4 text-[30px] leading-snug font-black">
-          {bar.steps.map((st, k) => (
-            <span
-              key={k}
-              className={
-                k < s
-                  ? "text-zinc-900"
-                  : k === s
-                    ? `border-b-2 ${miss ? "border-red-500 text-red-500" : "border-[var(--kit-accent)] text-[var(--kit-accent)]"}`
-                    : "text-zinc-300"
-              }
-            >
-              {show(st)}
-            </span>
-          ))}
-          <span className="text-sm font-normal text-zinc-400">{bar.c}</span>
-        </div>
-        <div className="text-base text-zinc-300">{MAGIC[(Math.floor(at / 4) + 1) % MAGIC.length].steps.map(show).join("  ")}</div>
-      </div>
-      {on ? (
-        <Keypad free={false} lit={[...need].filter((ch) => !got.current.includes(ch)).join("")} oct0={5} onNote={onNote} />
-      ) : (
-        <StartButton
-          onClick={() => {
-            unlock();
-            setOn(true);
-          }}
-        />
-      )}
-    </>
   );
 }
