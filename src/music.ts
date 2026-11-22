@@ -54,7 +54,7 @@ export function chord(name: string): number[] {
 
 export const isSyllable = (ch: string | undefined) => !!ch && ch >= "가" && ch <= "힣";
 
-const SOLFA = "도_레_미파_솔_라_시"; // 반음 자리는 _ — C장조 흰건반만
+export const SOLFA = "도_레_미파_솔_라_시"; // 반음 자리는 _ — C장조 흰건반만
 
 /** 줄 데이터 → 화면에 칠 계이름 글과 글자 자리별 음 */
 export function parse(line: string) {
@@ -79,17 +79,10 @@ export function solfa(ch: string, near: number): number | null {
   return near + ((((pc - (near % 12)) % 12) + 18) % 12) - 6;
 }
 
-/** 악보 없이 칠 때 — 앞 음에 가장 가까운 옥타브로, 흥얼거리듯. 도4~시5 밖으로는 안 나간다 */
-export function freeNote(ch: string, prev: number): number | null {
-  const n = solfa(ch, prev);
-  if (n == null) return null;
-  return n < 60 ? n + 12 : n > 83 ? n - 12 : n;
-}
-
 /** 선율 음을 품는 코드. 지금 코드가 품고 있으면 그대로 — 반주가 너무 자주 바뀌지 않게 */
-export function fitChord(note: number, cur: string | null): string {
+export function fitChord(note: number, cur: string | null): string | null {
   const has = (c: string) => chord(c).some((n) => n % 12 === note % 12);
-  return cur && has(cur) ? cur : ["C", "F", "G", "Am", "Dm", "Em"].find(has)!;
+  return cur && has(cur) ? cur : ["C", "F", "G", "Am", "Dm", "Em"].find(has) ?? cur; // 샵·내림은 품는 코드가 없어 그대로
 }
 
 const CHO = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ";
