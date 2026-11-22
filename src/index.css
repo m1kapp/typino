@@ -20,3 +20,8 @@ body {
     display: none;
   }
 }
+
+/* 길게 누르는 음의 작대기가 박마다 차오른다 */
+@keyframes fill {
+  to { color: var(--kit-accent); }
+}

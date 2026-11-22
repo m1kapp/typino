@@ -32,6 +32,8 @@ function Player() {
   const cur = useRef<string | null>(null); // 자유 모드: 지금 깔린 반주 코드
   const timers = useRef<number[]>([]); // 들어보기 예약
   const [demo, setDemo] = useState(false);
+  const [ringing, setRinging] = useState(false); // 방금 맞힌 음이 아직 제 길이만큼 울리는 중
+  const ring = useRef(0);
 
   const free = songId === "free";
   const song = SONGS.find((s) => s.id === songId);
@@ -45,6 +47,9 @@ function Player() {
   const restart = (id = songId) => {
     timers.current.forEach(clearTimeout);
     timers.current = [];
+    clearTimeout(ring.current);
+    ring.current = 0;
+    setRinging(false);
     setDemo(false);
     setSongId(id);
     setRow(0);
@@ -98,22 +103,37 @@ function Player() {
       setPlayed((p) => [...p.slice(-11), { label, note }]);
       return release;
     }
-    if (!line) return;
-    const want = line.notes[pos]!;
+    if (!song) return;
+    // 앞 음이 아직 울리는 중에 눌렀으면 그 음은 여기서 끝난 셈 — 다음 자리로 넘기고 판정
+    let [r, p] = [row, pos];
+    if (ring.current) {
+      clearTimeout(ring.current);
+      ring.current = 0;
+      [r, p] = step(song.lines, r, p);
+      setRow(r);
+      setPos(p);
+      setRinging(false);
+    }
+    const l = song.lines[r] ? parse(song.lines[r]) : null;
+    if (!l) return;
+    const want = l.notes[p]!;
     if (note % 12 !== want % 12) {
       // 틀려도 누른 음은 난다 — 건반처럼. 자리는 그대로
       setMiss(true);
       return ding(label, solfa(label, want)!, null);
     }
     // 맞으면 곡에 적힌 높이로. 계이름엔 옥타브가 없으니 높은 솔·낮은 솔은 곡이 안다
-    const release = ding(label, want, line.chords[pos]);
+    const release = ding(label, want, l.chords[p]);
     setMiss(false);
-    const next = lyric[pos + 1] === " " ? pos + 2 : pos + 1;
-    if (next < lyric.length) setPos(next);
-    else {
-      setRow((r) => r + 1);
-      setPos(0);
-    }
+    // 다음 건반은 이 음의 길이가 다 지나야 켜진다 — 불이 곧 박자
+    setRinging(true);
+    ring.current = window.setTimeout(() => {
+      ring.current = 0;
+      setRinging(false);
+      const [a, b] = step(song.lines, r, p);
+      setRow(a);
+      setPos(b);
+    }, l.beats[p] * BEAT);
     return release;
   };
 
@@ -154,21 +174,33 @@ function Player() {
             </div>
             <div className="min-h-10 text-[26px] leading-snug font-semibold break-keep">
               {line ? (
-                [...lyric].map((c, i) => (
-                  <span
-                    key={i}
-                    className={
-                      i < pos
-                        ? "text-zinc-900"
-                        : i === pos
-                          ? `border-b-2 ${miss ? "border-red-500 text-red-500" : "border-[var(--kit-accent)] text-[var(--kit-accent)]"}`
-                          : "text-zinc-300"
-                    }
-                  >
-                    {c}
-                    {holds(line.beats[i])}
-                  </span>
-                ))
+                [...lyric].map((c, i) =>
+                  i === pos && ringing ? (
+                    // 울리는 중: 글자는 켜지고 작대기는 한 박마다 하나씩 차오른다
+                    <span key={`${row}-${i}`} className="text-[var(--kit-accent)]">
+                      {c}
+                      {[...holds(line.beats[i])].map((d, k) => (
+                        <span key={k} className="text-zinc-300" style={{ animation: `fill 80ms ${(k + 1) * BEAT}ms forwards` }}>
+                          {d}
+                        </span>
+                      ))}
+                    </span>
+                  ) : (
+                    <span
+                      key={i}
+                      className={
+                        i < pos
+                          ? "text-zinc-900"
+                          : i === pos
+                            ? `border-b-2 ${miss ? "border-red-500 text-red-500" : "border-[var(--kit-accent)] text-[var(--kit-accent)]"}`
+                            : "text-zinc-300"
+                      }
+                    >
+                      {c}
+                      {holds(line.beats[i])}
+                    </span>
+                  ),
+                )
               ) : (
                 <span className="text-zinc-900">끝 — 한 곡 완주!</span>
               )}
@@ -181,7 +213,7 @@ function Player() {
       {!started ? (
         <StartButton onClick={start} />
       ) : free || line ? (
-        <Keypad free={free} hint={line ? lyric[pos] : undefined} onNote={hit} />
+        <Keypad free={free} hint={line && !ringing ? lyric[pos] : undefined} onNote={hit} />
       ) : (
         <StartButton onClick={() => restart()} label="다시 치기" />
       )}
@@ -203,6 +235,13 @@ function Player() {
   );
 }
 
+/** 줄 r 의 p 자리 다음 음 자리. 줄 끝이면 다음 줄 처음 */
+function step(lines: string[], r: number, p: number): [number, number] {
+  const t = parse(lines[r]).text;
+  const n = t[p + 1] === " " ? p + 2 : p + 1;
+  return n < t.length ? [r, n] : [r + 1, 0];
+}
+
 // 2박 이상인 음 뒤에 작대기 — 그만큼 쭉 누르라는 표시
 const holds = (b: number) => "ㅡ".repeat(Math.max(0, Math.round(b) - 1));
 const withHolds = (p: { text: string; beats: number[] }) => [...p.text].map((c, i) => c + holds(p.beats[i])).join("");
@@ -218,23 +257,31 @@ function StartButton({ onClick, label = "▶ 연주 시작" }: { onClick: () => 
 // 색은 둘 중 하나만 — 같이 주면 클래스 순서가 아니라 CSS 순서로 이겨서 불이 안 켜진다
 const BEAT = 450; // 들어보기 한 박 (ms)
 
-const KEY = "touch-manipulation select-none rounded-2xl border py-4 text-2xl font-bold ";
-const tone = (lit: boolean) => KEY + (lit ? "border-[var(--kit-accent)] bg-orange-50 text-[var(--kit-accent)]" : "border-zinc-200 bg-white text-zinc-900");
+// 아래 그림자가 건반 두께 — 누르면 그만큼 내려앉는다
+const KEY = "touch-manipulation select-none rounded-2xl border py-4 text-2xl font-bold transition-[transform,box-shadow] duration-75 ";
+const tone = (lit: boolean, down = false) =>
+  KEY +
+  (down ? "translate-y-1 shadow-none " : lit ? "shadow-[0_4px_0_#fdba74] " : "shadow-[0_4px_0_#e4e4e7] ") +
+  (lit || down ? "border-[var(--kit-accent)] bg-orange-50 text-[var(--kit-accent)]" : "border-zinc-200 bg-white text-zinc-900");
 
 /** 전화 키패드처럼 계이름 7개. 자유 모드엔 샵·내림(한 번만)과 옥타브 오르내림까지 */
 function Keypad({ free, hint, onNote }: { free: boolean; hint?: string; onNote: (label: string, note: number) => (() => void) | undefined }) {
   const [oct, setOct] = useState(4);
   const [acc, setAcc] = useState(0);
   const held = useRef<(() => void) | null>(null);
+  const [down, setDown] = useState<string | null>(null);
   const up = () => {
     held.current?.();
     held.current = null;
+    setDown(null);
   };
   // 누르는 순간 소리, 떼는 순간 끝 — 쭉 누르면 길게. 키보드 Enter 는 click 으로 짧게
-  const press = (fn: () => (() => void) | void) => ({
+  const press = (id: string, fn: () => (() => void) | void) => ({
     onPointerDown: (e: React.PointerEvent) => {
       e.preventDefault();
       up();
+      setDown(id);
+      navigator.vibrate?.(8); // 안드로이드만 — 아이폰 사파리는 진동 API 가 없다
       held.current = fn() ?? null;
     },
     onPointerUp: up,
@@ -245,7 +292,7 @@ function Keypad({ free, hint, onNote }: { free: boolean; hint?: string; onNote: 
     },
   });
   const key = (s: string) => (
-    <button key={s} className={tone(s === hint)} {...press(() => {
+    <button key={s} className={tone(s === hint, down === s)} {...press(s, () => {
       setAcc(0);
       return onNote(s + (acc > 0 ? "♯" : acc < 0 ? "♭" : ""), 12 * (oct + 1) + SOLFA.indexOf(s) + acc);
     })}>
@@ -253,7 +300,7 @@ function Keypad({ free, hint, onNote }: { free: boolean; hint?: string; onNote: 
     </button>
   );
   const mod = (a: number, sign: string, name: string) => (
-    <button className={tone(acc === a)} aria-label={name} {...press(() => setAcc((x) => (x === a ? 0 : a)))}>
+    <button className={tone(acc === a, down === name)} aria-label={name} {...press(name, () => setAcc((x) => (x === a ? 0 : a)))}>
       {sign}
     </button>
   );
@@ -266,9 +313,9 @@ function Keypad({ free, hint, onNote }: { free: boolean; hint?: string; onNote: 
       {free && mod(1, "♯", "올림")}
       {free && (
         <>
-          <button className={tone(false) + " !text-base"} {...press(() => setOct((o) => Math.max(2, o - 1)))}>▼ 낮게</button>
+          <button className={tone(false, down === "low") + " !text-base"} {...press("low", () => setOct((o) => Math.max(2, o - 1)))}>▼ 낮게</button>
           <div className="flex items-center justify-center text-sm text-zinc-400">옥타브 {oct}</div>
-          <button className={tone(false) + " !text-base"} {...press(() => setOct((o) => Math.min(6, o + 1)))}>▲ 높게</button>
+          <button className={tone(false, down === "high") + " !text-base"} {...press("high", () => setOct((o) => Math.min(6, o + 1)))}>▲ 높게</button>
         </>
       )}
     </div>
