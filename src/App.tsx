@@ -29,7 +29,8 @@ function Player() {
   const [started, setStarted] = useState(false);
   const [last, setLast] = useState<{ label: string; note: number } | null>(null);
   const [played, setPlayed] = useState<{ label: string; note: number }[]>([]);
-  const cur = useRef<string | null>(null); // 자유 모드: 지금 깔린 반주 코드
+  const cur = useRef<string | null>(null); // 지금 깔린 반주 코드
+  const step8 = useRef(0); // 코드가 바뀐 뒤 몇 번째 음인지 — 왼손 쿵·짝 차례
   const timers = useRef<number[]>([]); // 들어보기 예약
   const [demo, setDemo] = useState(false);
   const [ringing, setRinging] = useState(false); // 방금 맞힌 음이 아직 제 길이만큼 울리는 중
@@ -77,13 +78,20 @@ function Player() {
     setLast(null);
     setPlayed([]);
     cur.current = null;
+    step8.current = 0;
   };
 
-  // 오른손 선율 + 코드가 바뀌는 자리면 왼손 반주
-  // 누르는 동안 이어지는 소리 — 떼는 함수를 돌려준다
-  const ding = (label: string, note: number, c: string | null) => {
+  // 오른손 선율 + 왼손 반주. 누르는 동안 이어지는 소리 — 떼는 함수를 돌려준다
+  // c: 이 음에서 새로 시작하는 코드(없으면 깔린 코드 그대로). left=false 면 왼손 없이(틀린 음)
+  const ding = (label: string, note: number, c: string | null, left = true) => {
     const release = hold(note, 0.24);
-    if (c) chord(c).forEach((n, k) => play(n, 0.01, k ? 0.06 : 0.16, 2.4));
+    if (left) {
+      if (c) {
+        cur.current = c;
+        step8.current = 0;
+      } else step8.current++;
+      if (cur.current) comp(cur.current, step8.current);
+    }
     setLast({ label, note });
     return release;
   };
@@ -118,7 +126,6 @@ function Player() {
       // 악보 없이: 높이는 내가 정하고, 반주는 그 음을 품는 코드로 알아서
       const c = fitChord(note, cur.current);
       const release = ding(label, note, c !== cur.current ? c : null);
-      cur.current = c;
       setPlayed((p) => [...p.slice(-11), { label, note }]);
       return release;
     }
@@ -139,7 +146,7 @@ function Player() {
     if (note % 12 !== want % 12) {
       // 틀려도 누른 음은 난다 — 건반처럼. 자리는 그대로
       setMiss(true);
-      return ding(label, solfa(label, want)!, null);
+      return ding(label, solfa(label, want)!, null, false);
     }
     // 맞으면 곡에 적힌 높이로. 계이름엔 옥타브가 없으니 높은 솔·낮은 솔은 곡이 안다
     const release = ding(label, want, l.chords[p]);
@@ -299,6 +306,17 @@ function Player() {
       </p>
     </Section>
   );
+}
+
+/** 왼손: 누를 때마다 쿵(베이스)·짝(화음)을 번갈아 — 내 손 빠르기가 곧 반주 빠르기.
+ *  코드가 바뀌는 첫 음은 베이스와 화음을 같이, 두 번째 쿵은 5음으로 */
+function comp(name: string, k: number) {
+  const [bass, r, t, f] = chord(name);
+  if (k === 0) {
+    play(bass, 0.01, 0.15, 2);
+    [r, t, f].forEach((n) => play(n, 0.02, 0.04, 1.2));
+  } else if (k % 2) [r, t, f].forEach((n) => play(n, 0.01, 0.045, 0.8));
+  else play(k % 4 ? f - 12 : bass, 0.01, 0.12, 1.4);
 }
 
 /** 줄 r 의 p 자리 다음 음 자리. 줄 끝이면 다음 줄 처음 */
