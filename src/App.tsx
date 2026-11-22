@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { AppShell, AppShellContent, AppShellHeader, Section, SegmentedControl, Watermark } from "@m1kapp/kit";
-import { chord, noteName, parse, solfa, SONGS, typedMore } from "./music";
+import { chord, fitChord, freeNote, noteName, parse, solfa, SONGS, typedMore } from "./music";
 import { play, unlock } from "./audio";
 
 const ACCENT = "#c2410c";
@@ -23,15 +23,18 @@ export default function App() {
 }
 
 function Player() {
-  const [songId, setSongId] = useState<SongId>(SONGS[0].id);
+  const [songId, setSongId] = useState<SongId>("free");
   const [row, setRow] = useState(0);
   const [value, setValue] = useState("");
   const [started, setStarted] = useState(false);
   const [last, setLast] = useState<{ ch: string; note: number } | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  const prev = useRef(60); // 자유 모드: 앞 음과 지금 반주 코드
+  const cur = useRef<string | null>(null);
 
-  const song = SONGS.find((s) => s.id === songId)!;
-  const line = song.lines[row] ? parse(song.lines[row]) : null;
+  const free = songId === "free";
+  const song = SONGS.find((s) => s.id === songId);
+  const line = song?.lines[row] ? parse(song.lines[row]) : null;
   const lyric = line?.text ?? "";
   const done = value.length - 1; // 마지막 글자는 아직 조합 중일 수 있어 판정하지 않는다
 
@@ -45,6 +48,8 @@ function Player() {
     setRow(0);
     setValue("");
     setLast(null);
+    prev.current = 60;
+    cur.current = null;
     input.current?.focus();
   };
 
@@ -60,7 +65,16 @@ function Player() {
     // 계이름 한 글자를 다 치는 순간 그 음이 바로 난다. 틀린 계이름도 친 대로 — 건반처럼
     const i = (e.target.selectionStart ?? v.length) - 1;
     const ch = v[i];
-    if (line && typedMore(value, v) && ch) {
+    if (free && typedMore(value, v) && ch) {
+      // 악보 없이: 옥타브는 앞 음에 가까운 쪽, 반주는 그 음을 품는 코드로 알아서
+      const note = freeNote(ch, prev.current);
+      if (note != null) {
+        const c = fitChord(note, cur.current);
+        ding(ch, note, c !== cur.current ? c : null);
+        prev.current = note;
+        cur.current = c;
+      }
+    } else if (line && typedMore(value, v) && ch) {
       const near = line.notes.slice(0, i + 1).filter((n) => n != null).pop() ?? 60;
       const note = ch === lyric[i] && line.notes[i] != null ? line.notes[i] : solfa(ch, near);
       if (note != null) ding(ch, note, line.chords[i]);
@@ -80,35 +94,43 @@ function Player() {
       <SegmentedControl
         value={songId}
         onChange={(id) => restart(id)}
-        options={SONGS.map((s) => ({ value: s.id, label: s.title }))}
+        options={[{ value: "free", label: "자유" }, ...SONGS.map((s) => ({ value: s.id, label: s.title }))]}
       />
 
-      <div className="flex flex-col gap-2">
-        <div className="text-xs text-zinc-400">
-          {song.by} · {Math.min(row + 1, song.lines.length)}/{song.lines.length}
+      {free ? (
+        <div className="flex flex-col gap-2">
+          <div className="text-xs text-zinc-400">악보 없이 · 외운 계이름을 그냥 쳐 보세요</div>
+          <div className="min-h-10 text-[26px] leading-snug font-semibold text-zinc-300">솔솔라라 솔솔미</div>
+          <div className="min-h-6 text-base text-zinc-300">높낮이·반주는 알아서 붙어요</div>
         </div>
-        <div className="min-h-10 text-[26px] leading-snug font-semibold break-keep">
-          {line ? (
-            [...lyric].map((c, i) => (
-              <span
-                key={i}
-                className={
-                  i < done
-                    ? value[i] === c ? "text-zinc-900" : "text-red-500 underline"
-                    : i === done ? "text-zinc-900 border-b-2 border-[var(--kit-accent)]" : "text-zinc-300"
-                }
-              >
-                {c}
-              </span>
-            ))
-          ) : (
-            <span className="text-zinc-900">끝 — 한 곡 완주!</span>
-          )}
+      ) : song && (
+        <div className="flex flex-col gap-2">
+          <div className="text-xs text-zinc-400">
+            {song.by} · {Math.min(row + 1, song.lines.length)}/{song.lines.length}
+          </div>
+          <div className="min-h-10 text-[26px] leading-snug font-semibold break-keep">
+            {line ? (
+              [...lyric].map((c, i) => (
+                <span
+                  key={i}
+                  className={
+                    i < done
+                      ? value[i] === c ? "text-zinc-900" : "text-red-500 underline"
+                      : i === done ? "text-zinc-900 border-b-2 border-[var(--kit-accent)]" : "text-zinc-300"
+                  }
+                >
+                  {c}
+                </span>
+              ))
+            ) : (
+              <span className="text-zinc-900">끝 — 한 곡 완주!</span>
+            )}
+          </div>
+          <div className="min-h-6 text-base text-zinc-300">{song.lines[row + 1] ? parse(song.lines[row + 1]).text : ""}</div>
         </div>
-        <div className="min-h-6 text-base text-zinc-300">{song.lines[row + 1] ? parse(song.lines[row + 1]).text : ""}</div>
-      </div>
+      )}
 
-      {line ? (
+      {free || line ? (
         <div className="relative">
           <input
             ref={input}
@@ -119,7 +141,7 @@ function Player() {
             autoCapitalize="off"
             spellCheck={false}
             enterKeyHint="next"
-            placeholder="계이름을 치면 그 음이 나요 · 줄 끝에서 스페이스"
+            placeholder={free ? "도레미파솔라시 아무거나" : "계이름을 치면 그 음이 나요 · 줄 끝에서 스페이스"}
             className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3.5 text-xl outline-none focus:border-[var(--kit-accent)]"
           />
           {!started && (

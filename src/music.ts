@@ -14,13 +14,13 @@ export const SONGS: Song[] = [
     "[C]E4 D4 C4 D4 / E4 E4 E4", "[G]D4 D4 D4 / [C]E4 G4 G4",
     "[C]E4 D4 C4 D4 / E4 E4 E4", "[G]D4 D4 E4 D4 / [C]C4",
   ] },
-  { id: "joy", title: "환희의 송가", by: "베토벤", lines: [
+  { id: "joy", title: "환희", by: "베토벤", lines: [
     "[C]E4 E4 F4 G4 / [G]G4 F4 E4 D4 / [C]C4 C4 D4 E4 / [G]E4 D4 D4",
     "[C]E4 E4 F4 G4 / [G]G4 F4 E4 D4 / [C]C4 C4 D4 E4 / [G]D4 [C]C4 C4",
     "[G]D4 D4 E4 [C]C4 / [G]D4 E4 F4 E4 [C]C4 / [G]D4 E4 F4 E4 D4 / [C]C4 D4 [G]G3",
     "[C]E4 E4 F4 G4 / [G]G4 F4 E4 D4 / [C]C4 C4 D4 E4 / [G]D4 [C]C4 C4",
   ] },
-  { id: "birthday", title: "생일 축하", by: "힐 자매", lines: [
+  { id: "birthday", title: "생일", by: "힐 자매", lines: [
     "G4 G4 [C]A4 G4 / C5 [G]B4", "G4 G4 [G]A4 G4 / D5 [C]C5",
     "G4 G4 [C]G5 E5 / C5 [F]B4 A4", "[F]F5 F5 [C]E5 C5 / [G]D5 [C]C5",
   ] },
@@ -77,6 +77,19 @@ export function solfa(ch: string, near: number): number | null {
   const pc = SOLFA.indexOf(ch);
   if (pc < 0 || ch === "_") return null;
   return near + ((((pc - (near % 12)) % 12) + 18) % 12) - 6;
+}
+
+/** 악보 없이 칠 때 — 앞 음에 가장 가까운 옥타브로, 흥얼거리듯. 도4~시5 밖으로는 안 나간다 */
+export function freeNote(ch: string, prev: number): number | null {
+  const n = solfa(ch, prev);
+  if (n == null) return null;
+  return n < 60 ? n + 12 : n > 83 ? n - 12 : n;
+}
+
+/** 선율 음을 품는 코드. 지금 코드가 품고 있으면 그대로 — 반주가 너무 자주 바뀌지 않게 */
+export function fitChord(note: number, cur: string | null): string {
+  const has = (c: string) => chord(c).some((n) => n % 12 === note % 12);
+  return cur && has(cur) ? cur : ["C", "F", "G", "Am", "Dm", "Em"].find(has)!;
 }
 
 const CHO = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ";

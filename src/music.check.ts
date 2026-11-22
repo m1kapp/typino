@@ -1,6 +1,6 @@
 // node --experimental-strip-types src/music.check.ts
 import assert from "node:assert/strict";
-import { chord, midi, parse, solfa, SONGS, typedMore } from "./music.ts";
+import { chord, fitChord, freeNote, midi, parse, solfa, SONGS, typedMore } from "./music.ts";
 
 assert.equal(midi("C4"), 60);
 assert.deepEqual(chord("C"), [36, 48, 52, 55]);
@@ -27,5 +27,14 @@ assert.equal(solfa("가", 60), null);
 
 assert.equal(typedMore("소", "솔"), true);
 assert.equal(typedMore("솔", "소"), false);
+
+// 자유 모드: 도도솔솔 라라솔 — 외워서 치면 작은 별이 그 높이로 나온다
+let prev = 60;
+const hummed = [..."도도솔솔라라솔"].map((ch) => (prev = freeNote(ch, prev)!));
+assert.deepEqual(hummed, [60, 60, 67, 67, 69, 69, 67]);
+assert.equal(freeNote("도", 71), 72); // 시 다음 도는 위로
+assert.equal(fitChord(67, "C"), "C");
+assert.equal(fitChord(69, "C"), "F");
+assert.equal(fitChord(71, null), "G");
 
 console.log("music ok");
