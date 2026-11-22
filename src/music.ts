@@ -128,3 +128,90 @@ export function fromSolfa(src: string): string[] {
     return toks.map((t) => (t === "/" ? "/" : t.c + noteName(t.n) + (t.b > 1 ? `:${t.b}` : ""))).join(" ");
   }).filter(Boolean);
 }
+
+// ---- 글 노래: 아무 문장이나 그 글자로 노래가 된다. 같은 글은 언제나 같은 노래 ----
+// 모음(가운뎃소리) = 멜로디 높이(밝은 ㅏ·ㅣ 는 높게, 어두운 ㅜ·ㅡ 는 낮게), 첫소리 = 높이를 살짝 흔듦,
+// 받침 = 길게, 첫 글자 = 코드 진행. 음은 5음계라 어떤 글을 쳐도 듣기 좋다.
+// 감정 키: ㅠ·ㅜㅜ 는 단조로 느리게, ㅋㅋ·ㅎㅎ·! 는 통통 빠르게, ! 는 쾅, . 는 쉼, ~ 는 길게, ? 는 올라감
+
+// 중성 21개 차례대로 ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ → 5음계 몇 번째 칸
+const VOWEL_DEG = [5, 6, 7, 7, 4, 6, 5, 6, 3, 5, 6, 4, 4, 2, 4, 5, 3, 2, 1, 3, 8];
+const JUNG = "ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ";
+const PROGS = {
+  major: [["C", "G", "Am", "F"], ["C", "Am", "F", "G"], ["F", "G", "Em", "Am"], ["C", "F", "G", "C"]],
+  minor: [["Am", "F", "C", "G"], ["Am", "Dm", "G", "C"], ["Am", "Em", "F", "G"]],
+};
+
+export type Tone = { ch: string; midi: number | null; beats: number; chord: string | null; accent?: boolean; short?: boolean };
+
+export function compose(text: string) {
+  const minor = /ㅠ|ㅜㅜ/.test(text);
+  const bouncy = /ㅋㅋ|ㅎㅎ|!/.test(text);
+  const bpm = minor ? 72 : bouncy ? 132 : 100;
+  const first = text.trim().charCodeAt(0) || 0;
+  const pool = minor ? PROGS.minor : PROGS.major;
+  const prog = pool[first % pool.length];
+  // 장조는 도 5음계(도레미솔라), 단조는 라 5음계(라도레미솔) — 같은 흰건반 다섯 개를 다르게 센다
+  const base = minor ? 57 : 60;
+  const steps = minor ? [0, 3, 5, 7, 10] : [0, 2, 4, 7, 9];
+  const deg = (d: number) => base + 12 * Math.floor(d / 5) + steps[((d % 5) + 5) % 5];
+
+  const tones: Tone[] = [];
+  let beat = 0; // 지금까지 흐른 박 — 4박마다 다음 코드
+  let bar = -1;
+  let k = 0; // ㅋ·ㅎ 웃음이 이어질 때 한 칸씩 오르게
+  for (const ch of text) {
+    const t: Tone = { ch, midi: null, beats: 0.5, chord: null };
+    const code = ch.charCodeAt(0) - 0xac00;
+    if (code >= 0 && code < 11172) {
+      // 완성된 한글 한 글자
+      const cho = Math.floor(code / 588);
+      const jung = Math.floor((code % 588) / 28);
+      const jong = code % 28;
+      t.midi = deg(VOWEL_DEG[jung] + (cho % 3) - 1);
+      t.beats = jong ? 1 : 0.5;
+      k = 0;
+    } else if (ch === "ㅋ" || ch === "ㅎ") {
+      t.midi = deg(10 + (k++ % 5)); // 키득키득 높고 짧게
+      t.beats = 0.25;
+      t.short = true;
+    } else if (JUNG.includes(ch)) {
+      t.midi = deg(VOWEL_DEG[JUNG.indexOf(ch)] - 3); // ㅠㅠ 는 낮게 길게
+      t.beats = 1;
+    } else if (ch === "!") {
+      t.accent = true; // 쾅 — 화음을 세게
+    } else if (ch === ".") {
+      t.beats = 1;
+    } else if (ch === "~") {
+      const prev = tones[tones.length - 1];
+      if (prev) prev.beats += 1;
+      t.beats = 0;
+    } else if (ch === "?") {
+      const prev = [...tones].reverse().find((x) => x.midi != null)?.midi ?? deg(4);
+      t.midi = prev + (minor ? 3 : 2);
+      t.beats = 1;
+    } else if (ch === " " || ch === "\n") {
+      t.beats = 0.25;
+    } else if (/\p{L}|\p{N}/u.test(ch)) {
+      t.midi = deg(ch.toLowerCase().charCodeAt(0) % 9); // 영어·숫자도 노래가 된다
+    } else t.beats = 0.25;
+
+    // 새 마디의 첫 음엔 코드를 바꾸고, 그 음은 코드 안의 음으로 맞춘다 — 반주와 부딪히지 않게
+    const b = Math.floor(beat / 4);
+    if (b !== bar && (t.midi != null || t.accent)) {
+      bar = b;
+      t.chord = prog[b % prog.length];
+      if (t.midi != null) t.midi = snap(t.midi, t.chord);
+    }
+    beat += t.beats;
+    tones.push(t);
+  }
+  return { tones, minor, bouncy, bpm, prog };
+}
+
+/** 코드 안의 가장 가까운 음 */
+function snap(midi: number, name: string) {
+  const pcs = chord(name).map((n) => n % 12);
+  for (let d = 0; d < 6; d++) for (const m of [midi + d, midi - d]) if (pcs.includes(m % 12)) return m;
+  return midi;
+}

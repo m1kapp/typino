@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AppShell, AppShellContent, AppShellHeader, Section, Watermark } from "@m1kapp/kit";
-import { chord, fitChord, fromSolfa, noteName, parse, solfa, SOLFA, SONGS } from "./music";
+import { chord, compose, fitChord, fromSolfa, noteName, parse, solfa, SOLFA, SONGS } from "./music";
 import { drum, hold, pad, play, quiet, unlock } from "./audio";
 
 const ACCENT = "#c2410c";
@@ -22,7 +22,7 @@ export default function App() {
 }
 
 function Player() {
-  const [songId, setSongId] = useState("star");
+  const [songId, setSongId] = useState("text");
   const [exact, setExact] = useState(false); // 켜면 맞는 계이름만 — 끄면 아무 키나 다다다 쳐도 곡의 다음 음
   const [row, setRow] = useState(0);
   const [pos, setPos] = useState(0); // 줄 안에서 다음에 누를 글자 자리
@@ -205,7 +205,7 @@ function Player() {
     <Section className="flex flex-col gap-6 px-4 pt-4 pb-8">
       {/* 곡이 늘어 한 줄에 다 안 들어간다 — 옆으로 넘긴다 */}
       <div className="scrollbar-hide -mx-4 flex gap-2 overflow-x-auto px-4">
-        {[{ id: "free", title: "자유", by: "악보 없이" }, { id: "mine", title: "내 곡", by: "직접 적기" }, ...SONGS].map((t) => (
+        {[{ id: "text", title: "글 노래", by: "치면 노래로" }, { id: "free", title: "자유", by: "악보 없이" }, { id: "mine", title: "내 곡", by: "직접 적기" }, ...SONGS].map((t) => (
           <button
             key={t.id}
             onClick={() => restart(t.id)}
@@ -217,7 +217,9 @@ function Player() {
         ))}
       </div>
 
-      {free ? (
+      {songId === "text" ? (
+        <TextSong />
+      ) : free ? (
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between text-xs text-zinc-400">
             <span>악보 없이 · 외운 계이름을 눌러 보세요</span>
@@ -328,7 +330,7 @@ function Player() {
         )
       )}
 
-      {edit ? null : !started ? (
+      {edit || songId === "text" ? null : !started ? (
         <StartButton onClick={start} />
       ) : free || line ? (
         <>
@@ -350,7 +352,7 @@ function Player() {
       )}
 
       <div className="min-h-8 font-mono text-sm text-zinc-400">
-        {last && (
+        {last && songId !== "text" && (
           <>
             <b className="mr-2 font-sans text-2xl text-[var(--kit-accent)]">{last.label}</b>
             {noteName(last.note)}
@@ -359,7 +361,8 @@ function Player() {
       </div>
 
       <p className="text-xs leading-relaxed text-zinc-400">
-        곡에선 아무 키나 다다다 치면 곡의 다음 음이 나요 — 치는 빠르기가 곧 노래의 박자. 컴퓨터 자판도, 폰 자판도, 아래
+        글 노래는 아무 말이나 치면 그 글자로 노래가 돼요 — 모음이 높낮이, 받침이 길이, ㅠㅠ 는 슬프게, ㅋㅋ 는 통통. 같은 글은 언제나
+        같은 노래라 링크로 보낼 수 있어요. 곡에선 아무 키나 다다다 치면 곡의 다음 음이 나요 — 치는 빠르기가 곧 노래의 박자. 컴퓨터 자판도, 폰 자판도, 아래
         건반도 다 돼요. 계이름 맞추기를 켜면 주황으로 켜진 건반만 맞아요. 반주는 알아서 깔려요.
       </p>
     </Section>
@@ -481,6 +484,118 @@ function Keypad({ free, lit, oct0 = 4, onNote }: { free: boolean; lit?: string; 
           <button className={tone(false, down.includes("high")) + " !text-base"} {...press("high", () => setOct((o) => Math.min(6, o + 1)))}>▲ 높게</button>
         </>
       )}
+    </div>
+  );
+}
+
+// 글 노래 — 치는 대로 그 글자의 음이 나고, 다 치면 한 곡으로 들려준다. 링크(?s=글)로 보내면 받은 사람도 같은 노래
+const SHARED = new URLSearchParams(location.search).get("s") ?? "";
+
+function TextSong() {
+  const [text, setText] = useState(SHARED);
+  const [at, setAt] = useState(-1); // 들려주는 중인 글자 (-1 = 멈춤)
+  const [sent, setSent] = useState("");
+  const timers = useRef<number[]>([]);
+  const song = compose(text);
+  const stop = () => {
+    timers.current.forEach(clearTimeout);
+    timers.current = [];
+    quiet();
+    setAt(-1);
+  };
+  useEffect(() => stop, []);
+
+  // 한 음 — 코드가 바뀌는 자리면 왼손·현악, 통통한 글이면 드럼까지
+  const sound = (t: (typeof song.tones)[number], k: number, cur: string | null, len: number) => {
+    if (t.midi != null) window.setTimeout(hold(t.midi, t.accent ? 0.3 : 0.22), t.short ? 120 : len);
+    if (cur && (t.midi != null || t.accent)) {
+      comp(cur, k);
+      const [, r, th, f] = chord(cur);
+      pad([r, th, f, r + 12]);
+      if (song.bouncy) drum(t.accent ? "snare" : k === 0 ? "kick" : "hat");
+      if (t.accent) [r, th, f].forEach((n) => play(n + 12, 0, 0.12, 0.8));
+    }
+  };
+
+  const sing = () => {
+    unlock();
+    stop();
+    const q = 60000 / song.bpm;
+    let ms = 150;
+    let cur: string | null = null;
+    let k = 0;
+    song.tones.forEach((t, i) => {
+      if (t.chord) {
+        cur = t.chord;
+        k = 0;
+      } else if (t.midi != null) k++;
+      const [c, kk] = [cur, k];
+      timers.current.push(
+        window.setTimeout(() => {
+          setAt(i);
+          sound(t, kk, c, t.beats * q * 0.9);
+        }, ms),
+      );
+      ms += t.beats * q;
+    });
+    timers.current.push(window.setTimeout(() => setAt(-1), ms + 400));
+  };
+
+  // 치는 순간: 방금 친(또는 조합 중인) 마지막 글자의 음
+  const type = (v: string) => {
+    unlock();
+    setText(v);
+    const tones = compose(v).tones;
+    const i = tones.length - 1;
+    if (i < 0) return;
+    const chordAt = [...tones.slice(0, i + 1)].reverse().find((t) => t.chord)?.chord ?? null;
+    sound(tones[i], tones[i].chord ? 0 : 1, chordAt, 350);
+  };
+
+  const share = async () => {
+    const url = `${location.origin}/?s=${encodeURIComponent(text)}`;
+    try {
+      if (navigator.share) await navigator.share({ title: "typino", text: "내 글이 노래가 됐어 🎹", url });
+      else {
+        await navigator.clipboard.writeText(url);
+        setSent("링크를 복사했어요");
+      }
+    } catch {
+      /* 공유 창을 닫았다 */
+    }
+  };
+
+  const mood = song.minor ? "슬픈 단조 ㅠ" : song.bouncy ? "통통 신나게" : "잔잔하게";
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="text-xs text-zinc-400">{SHARED && text === SHARED ? "누가 보낸 노래예요 — ▶ 를 눌러 들어 보세요" : "아무 말이나 쳐 보세요 · 치는 대로 노래가 돼요"}</div>
+      <textarea
+        value={text}
+        maxLength={80}
+        rows={3}
+        onChange={(e) => type(e.target.value)}
+        placeholder={"사랑해 ㅋㅋㅋ\n오늘 너무 힘들었어 ㅠㅠ"}
+        className="rounded-2xl border border-zinc-200 p-3 text-2xl leading-snug font-semibold outline-none focus:border-[var(--kit-accent)]"
+      />
+      {at >= 0 && (
+        <div className="text-[26px] leading-snug font-semibold break-all">
+          {[...text].map((c, i) => (
+            <span key={i} className={i < at ? "text-zinc-900" : i === at ? "text-[var(--kit-accent)]" : "text-zinc-300"}>
+              {c}
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="text-xs text-zinc-400">
+        {text ? `${mood} · ${song.bpm} BPM · ${song.prog.join("–")}` : "ㅠㅠ 는 슬프게 · ㅋㅋ 는 통통 · ! 는 쾅 · . 은 쉼 · ~ 는 길게"}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <StartButton onClick={at >= 0 ? stop : sing} label={at >= 0 ? "■ 멈춤" : "▶ 노래로 듣기"} />
+        <button onClick={share} disabled={!text} className="rounded-2xl border border-zinc-200 py-3.5 text-lg font-bold text-zinc-700 disabled:opacity-40">
+          보내기
+        </button>
+      </div>
+      {sent && <div className="text-xs text-[var(--kit-accent)]">{sent}</div>}
     </div>
   );
 }

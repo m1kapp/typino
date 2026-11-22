@@ -1,6 +1,6 @@
 // node --experimental-strip-types src/music.check.ts
 import assert from "node:assert/strict";
-import { chord, fitChord, fromSolfa, midi, parse, solfa, SONGS } from "./music.ts";
+import { chord, compose, fitChord, fromSolfa, midi, parse, solfa, SONGS } from "./music.ts";
 
 assert.equal(midi("C4"), 60);
 assert.deepEqual(chord("C"), [36, 48, 52, 55]);
@@ -42,5 +42,17 @@ assert.equal(parse(mine[1]).notes.at(-1), 60);
 assert.deepEqual(fromSolfa("안녕 abc"), []);
 assert.deepEqual(parse(fromSolfa("높도 낮시 높높솔")[0]).notes, [72, null, 59, null, 91]);
 assert.equal(parse(fromSolfa("높도")[0]).text, "도"); // 높·낮은 글에 안 남는다
+
+// 글 노래: 같은 글은 같은 노래, 받침은 길게, 감정 키
+const love = compose("사랑해");
+assert.deepEqual(love, compose("사랑해"));
+assert.deepEqual(love.tones.map((t) => t.beats), [0.5, 1, 0.5]);
+assert.ok(love.tones[0].chord && chord(love.tones[0].chord).some((n) => n % 12 === love.tones[0].midi! % 12)); // 첫 음은 코드 안
+assert.equal(compose("힘들어 ㅠㅠ").minor, true);
+assert.equal(compose("ㅋㅋㅋ").bouncy, true);
+assert.equal(compose("ㅋㅋㅋ").tones[0].short, true);
+assert.equal(compose("아.").tones[1].midi, null);
+assert.equal(compose("아~").tones[0].beats, 1.5);
+assert.ok(compose("hello 123 안녕?! ~").tones.every((t) => t.midi == null || (t.midi >= 45 && t.midi <= 96)));
 
 console.log("music ok");
