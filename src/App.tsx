@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { AppShell, AppShellContent, AppShellHeader, Section, SegmentedControl, Watermark } from "@m1kapp/kit";
-import { noteName, parse, solfa, SONGS, thirdBelow, typedMore } from "./music";
+import { chord, noteName, parse, solfa, SONGS, typedMore } from "./music";
 import { play, unlock } from "./audio";
 
 const ACCENT = "#c2410c";
@@ -48,10 +48,10 @@ function Player() {
     input.current?.focus();
   };
 
-  // 선율 음 + 3도 아래 음을 같이 — 피아노 오른손 두 손가락
-  const ding = (ch: string, note: number) => {
+  // 오른손 선율 + 코드가 바뀌는 자리면 왼손 반주
+  const ding = (ch: string, note: number, c: string | null) => {
     play(note, 0, 0.24);
-    play(thirdBelow(note), 0.01, 0.1);
+    if (c) chord(c).forEach((n, k) => play(n, 0.01, k ? 0.06 : 0.16, 2.4));
     setLast({ ch, note });
   };
 
@@ -63,7 +63,7 @@ function Player() {
     if (line && typedMore(value, v) && ch) {
       const near = line.notes.slice(0, i + 1).filter((n) => n != null).pop() ?? 60;
       const note = ch === lyric[i] && line.notes[i] != null ? line.notes[i] : solfa(ch, near);
-      if (note != null) ding(ch, note);
+      if (note != null) ding(ch, note, line.chords[i]);
     }
 
     // 줄을 다 치고 스페이스 → 다음 줄. 스페이스로 조합이 끝난 뒤라 비워도 글자가 안 남는다
