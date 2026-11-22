@@ -302,7 +302,7 @@ function Player() {
       {edit || songId === "magic" ? null : !started ? (
         <StartButton onClick={start} />
       ) : free || line ? (
-        <Keypad free={free} hint={line && !ringing ? lyric[pos] : undefined} onNote={hit} />
+        <Keypad free={free} lit={line && !ringing ? lyric[pos] : undefined} onNote={hit} />
       ) : (
         <StartButton onClick={() => restart()} label="다시 치기" />
       )}
@@ -376,23 +376,26 @@ const tone = (lit: boolean, down = false) =>
   (down ? "translate-y-1 shadow-none " : lit ? "shadow-[0_4px_0_#fdba74] " : "shadow-[0_4px_0_#e4e4e7] ") +
   (lit || down ? "border-[var(--kit-accent)] bg-orange-50 text-[var(--kit-accent)]" : "border-zinc-200 bg-white text-zinc-900");
 
-/** 전화 키패드처럼 계이름 7개. 자유 모드엔 샵·내림(한 번만)과 옥타브 오르내림까지 */
-/** 누르는 순간 소리, 떼는 순간 끝 — 쭉 누르면 길게. 키보드 Enter 는 click 으로 짧게 */
+/** 누르는 순간 소리, 떼는 순간 끝 — 쭉 누르면 길게. 손가락마다 따로라 여러 건반을 같이 누를 수 있다.
+ *  키보드 Enter 는 click 으로 짧게 */
 function usePress() {
-  const held = useRef<(() => void) | null>(null);
-  const [down, setDown] = useState<string | null>(null);
-  const up = () => {
-    held.current?.();
-    held.current = null;
-    setDown(null);
+  const held = useRef(new Map<number, { id: string; release: () => void }>()); // 손가락(pointerId)마다
+  const [down, setDown] = useState<string[]>([]);
+  const sync = () => setDown([...held.current.values()].map((h) => h.id));
+  const up = (e: React.PointerEvent) => {
+    const h = held.current.get(e.pointerId);
+    if (!h) return;
+    h.release();
+    held.current.delete(e.pointerId);
+    sync();
   };
   const press = (id: string, fn: () => (() => void) | void) => ({
     onPointerDown: (e: React.PointerEvent) => {
       e.preventDefault();
-      up();
-      setDown(id);
+      up(e);
       navigator.vibrate?.(8); // 안드로이드만 — 아이폰 사파리는 진동 API 가 없다
-      held.current = fn() ?? null;
+      held.current.set(e.pointerId, { id, release: fn() ?? (() => {}) });
+      sync();
     },
     onPointerUp: up,
     onPointerLeave: up,
@@ -404,12 +407,13 @@ function usePress() {
   return { down, press };
 }
 
-function Keypad({ free, hint, onNote }: { free: boolean; hint?: string; onNote: (label: string, note: number) => (() => void) | undefined }) {
-  const [oct, setOct] = useState(4);
+/** 전화 키패드처럼 계이름 7개. 자유 모드엔 샵·내림(한 번만)과 옥타브 오르내림까지. lit 에 든 계이름은 불이 켜진다 */
+function Keypad({ free, lit, oct0 = 4, onNote }: { free: boolean; lit?: string; oct0?: number; onNote: (label: string, note: number) => (() => void) | undefined }) {
+  const [oct, setOct] = useState(oct0);
   const [acc, setAcc] = useState(0);
   const { down, press } = usePress();
   const key = (s: string) => (
-    <button key={s} className={tone(s === hint, down === s)} {...press(s, () => {
+    <button key={s} className={tone(!!lit && lit.includes(s), down.includes(s))} {...press(s, () => {
       setAcc(0);
       return onNote(s + (acc > 0 ? "♯" : acc < 0 ? "♭" : ""), 12 * (oct + 1) + SOLFA.indexOf(s) + acc);
     })}>
@@ -417,7 +421,7 @@ function Keypad({ free, hint, onNote }: { free: boolean; hint?: string; onNote: 
     </button>
   );
   const mod = (a: number, sign: string, name: string) => (
-    <button className={tone(acc === a, down === name)} aria-label={name} {...press(name, () => setAcc((x) => (x === a ? 0 : a)))}>
+    <button className={tone(acc === a, down.includes(name))} aria-label={name} {...press(name, () => setAcc((x) => (x === a ? 0 : a)))}>
       {sign}
     </button>
   );
@@ -430,25 +434,23 @@ function Keypad({ free, hint, onNote }: { free: boolean; hint?: string; onNote: 
       {free && mod(1, "♯", "올림")}
       {free && (
         <>
-          <button className={tone(false, down === "low") + " !text-base"} {...press("low", () => setOct((o) => Math.max(2, o - 1)))}>▼ 낮게</button>
+          <button className={tone(false, down.includes("low")) + " !text-base"} {...press("low", () => setOct((o) => Math.max(2, o - 1)))}>▼ 낮게</button>
           <div className="flex items-center justify-center text-sm text-zinc-400">옥타브 {oct}</div>
-          <button className={tone(false, down === "high") + " !text-base"} {...press("high", () => setOct((o) => Math.min(6, o + 1)))}>▲ 높게</button>
+          <button className={tone(false, down.includes("high")) + " !text-base"} {...press("high", () => setOct((o) => Math.min(6, o + 1)))}>▲ 높게</button>
         </>
       )}
     </div>
   );
 }
 
-// 한 손가락: 반주가 Am–F–C–G 를 혼자 돌고, 나는 1~5 숫자만 톡톡. 숫자는 그 코드에 어울리는 두 음
-const MAGIC = { prog: ["Am", "F", "C", "G"], pat: ["3535", "4545", "1515", "2525"], bpm: 84 };
-const FIVE = ["도", "레", "미", "파", "솔"];
+// 한 손가락: 반주가 Am–F–C–G 를 혼자 돌고, 나는 불 켜진 두 계이름만 톡톡. 그 코드에 어울리는 두 음이라 뭘 눌러도 곡이 된다
+const MAGIC = { prog: ["Am", "F", "C", "G"], pat: ["미솔미솔", "파솔파솔", "도솔도솔", "레솔레솔"], bpm: 84 };
 
 function Magic({ drumOn, setDrumOn }: { drumOn: boolean; setDrumOn: (f: (b: boolean) => boolean) => void }) {
   const [bar, setBar] = useState(-1); // -1 = 멈춤
   const stop = useRef<(() => void) | null>(null);
   const drums = useRef(drumOn);
   drums.current = drumOn;
-  const { down, press } = usePress();
   const alive = useRef(true);
   useEffect(
     () => () => {
@@ -482,7 +484,7 @@ function Magic({ drumOn, setDrumOn }: { drumOn: boolean; setDrumOn: (f: (b: bool
     <>
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between text-xs text-zinc-400">
-          <span>반주에 맞춰 숫자를 톡톡 · 손가락 하나면 돼요</span>
+          <span>반주에 맞춰 불 켜진 건반을 톡톡 · 같이 눌러도 돼요</span>
           <span className="flex gap-4">
             <DrumToggle on={drumOn} set={setDrumOn} />
             {bar >= 0 && (
@@ -493,7 +495,7 @@ function Magic({ drumOn, setDrumOn }: { drumOn: boolean; setDrumOn: (f: (b: bool
           </span>
         </div>
         <div className="flex items-baseline gap-3">
-          <span className="text-[44px] leading-none font-black tracking-[0.25em] text-[var(--kit-accent)]">{pat}</span>
+          <span className="text-[40px] leading-none font-black tracking-[0.15em] text-[var(--kit-accent)]">{pat}</span>
           <span className="text-sm text-zinc-400">{MAGIC.prog[i]}</span>
         </div>
         <div className="text-base text-zinc-300">다음 {MAGIC.pat[(i + 1) % MAGIC.pat.length]}</div>
@@ -501,17 +503,7 @@ function Magic({ drumOn, setDrumOn }: { drumOn: boolean; setDrumOn: (f: (b: bool
       {bar < 0 ? (
         <StartButton onClick={go} label={wait ? "피아노 꺼내는 중…" : "▶ 반주 시작"} />
       ) : (
-        <div className="grid grid-cols-5 gap-2">
-          {FIVE.map((name, k) => {
-            const n = String(k + 1);
-            return (
-              <button key={n} aria-label={n} className={tone(pat.includes(n), down === n) + " flex flex-col items-center !py-5"} {...press(n, () => hold(72 + SOLFA.indexOf(name), 0.22))}>
-                <span className="text-3xl">{n}</span>
-                <span className="text-xs font-normal opacity-60">{name}</span>
-              </button>
-            );
-          })}
-        </div>
+        <Keypad free={false} lit={pat} oct0={5} onNote={(_, n) => hold(n, 0.22)} />
       )}
     </>
   );
