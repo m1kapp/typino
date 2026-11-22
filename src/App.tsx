@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AppShell, AppShellContent, AppShellHeader, Section, Watermark } from "@m1kapp/kit";
 import { chord, fitChord, fromSolfa, noteName, parse, solfa, SOLFA, SONGS } from "./music";
-import { drum, hold, pad, play, quiet, ready, unlock } from "./audio";
-import { band } from "./band";
+import { drum, hold, pad, play, quiet, unlock } from "./audio";
 
 const ACCENT = "#c2410c";
 
@@ -177,7 +176,7 @@ function Player() {
     <Section className="flex flex-col gap-6 px-4 pt-4 pb-8">
       {/* 곡이 늘어 한 줄에 다 안 들어간다 — 옆으로 넘긴다 */}
       <div className="scrollbar-hide -mx-4 flex gap-2 overflow-x-auto px-4">
-        {[{ id: "free", title: "자유", by: "악보 없이" }, { id: "magic", title: "한 손가락", by: "반주에 톡톡" }, { id: "mine", title: "내 곡", by: "직접 적기" }, ...SONGS].map((t) => (
+        {[{ id: "free", title: "자유", by: "악보 없이" }, { id: "magic", title: "같이 치기", by: "두 건반 같이" }, { id: "mine", title: "내 곡", by: "직접 적기" }, ...SONGS].map((t) => (
           <button
             key={t.id}
             onClick={() => restart(t.id)}
@@ -443,67 +442,82 @@ function Keypad({ free, lit, oct0 = 4, onNote }: { free: boolean; lit?: string; 
   );
 }
 
-// 한 손가락: 반주가 Am–F–C–G 를 혼자 돌고, 나는 불 켜진 두 계이름만 톡톡. 그 코드에 어울리는 두 음이라 뭘 눌러도 곡이 된다
-const MAGIC = { prog: ["Am", "F", "C", "G"], pat: ["미솔미솔", "파솔파솔", "도솔도솔", "레솔레솔"], bpm: 84 };
+// 같이 치기: 마디 첫 음은 두 건반을 같이(코드의 뼈대), 나머지는 한 건반씩. 누를 때만 나아가고 반주는 그 손을 따라온다
+const MAGIC = [
+  { c: "Am", steps: ["라미", "솔", "미", "솔"] },
+  { c: "F", steps: ["파도", "솔", "라", "솔"] },
+  { c: "C", steps: ["도솔", "미", "솔", "미"] },
+  { c: "G", steps: ["레솔", "시", "레", "시"] },
+];
 
 function Magic({ drumOn, setDrumOn }: { drumOn: boolean; setDrumOn: (f: (b: boolean) => boolean) => void }) {
-  const [bar, setBar] = useState(-1); // -1 = 멈춤
-  const stop = useRef<(() => void) | null>(null);
-  const drums = useRef(drumOn);
-  drums.current = drumOn;
-  const alive = useRef(true);
-  useEffect(
-    () => () => {
-      alive.current = false;
-      stop.current?.(); // 다른 탭으로 가면 반주도 멈춘다
-    },
-    [],
-  );
+  const [on, setOn] = useState(false);
+  const [at, setAt] = useState(0); // 처음부터 몇 번째 걸음
+  const [miss, setMiss] = useState(false);
+  const got = useRef(""); // 이번 걸음에서 이미 누른 계이름 — 두 손가락이 같은 순간에 와도 놓치지 않게 ref
+  const [, redraw] = useState(0); // got 이 바뀌면 남은 건반 불을 다시 그린다
+  useEffect(() => () => quiet(), []);
 
-  const [wait, setWait] = useState(false);
-  const go = async () => {
-    unlock();
-    // 첫 마디부터 피아노 소리로 — 녹음을 받을 때까지 잠깐(길어도 3초) 기다린다
-    setWait(true);
-    await Promise.race([ready(), new Promise((r) => setTimeout(r, 3000))]);
-    if (!alive.current) return; // 기다리는 사이 다른 탭으로 갔다
-    setWait(false);
-    stop.current?.();
-    stop.current = band(MAGIC.prog, MAGIC.bpm, () => drums.current, setBar);
-    setBar(0);
+  const bar = MAGIC[Math.floor(at / 4) % MAGIC.length];
+  const s = at % 4;
+  const need = bar.steps[s];
+
+  const onNote = (label: string, note: number) => {
+    const release = hold(note, 0.22);
+    if (!need.includes(label)) {
+      setMiss(true); // 틀려도 소리는 난다. 자리는 그대로
+      return release;
+    }
+    setMiss(false);
+    if (!got.current.includes(label)) got.current += label;
+    redraw((x) => x + 1);
+    if ([...need].every((ch) => got.current.includes(ch))) {
+      comp(bar.c, s); // 왼손: 마디 첫 걸음은 베이스+화음, 다음부터 쿵짝
+      const [, r, t, f] = chord(bar.c);
+      pad([r, t, f, r + 12]);
+      if (drumOn) drum(s === 0 ? "kick" : s === 2 ? "snare" : "hat");
+      got.current = "";
+      setAt((a) => a + 1);
+    }
+    return release;
   };
-  const end = () => {
-    stop.current?.();
-    stop.current = null;
-    setBar(-1);
-  };
-  const i = Math.max(0, bar) % MAGIC.prog.length;
-  const pat = MAGIC.pat[i];
+  const show = (st: string) => [...st].join("+");
 
   return (
     <>
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between text-xs text-zinc-400">
-          <span>반주에 맞춰 불 켜진 건반을 톡톡 · 같이 눌러도 돼요</span>
-          <span className="flex gap-4">
-            <DrumToggle on={drumOn} set={setDrumOn} />
-            {bar >= 0 && (
-              <button onClick={end} className="font-bold text-[var(--kit-accent)]">
-                ■ 멈춤
-              </button>
-            )}
-          </span>
+          <span>불 켜진 건반을 누르세요 · 두 개면 같이</span>
+          <DrumToggle on={drumOn} set={setDrumOn} />
         </div>
-        <div className="flex items-baseline gap-3">
-          <span className="text-[40px] leading-none font-black tracking-[0.15em] text-[var(--kit-accent)]">{pat}</span>
-          <span className="text-sm text-zinc-400">{MAGIC.prog[i]}</span>
+        <div className="flex items-baseline gap-4 text-[30px] leading-snug font-black">
+          {bar.steps.map((st, k) => (
+            <span
+              key={k}
+              className={
+                k < s
+                  ? "text-zinc-900"
+                  : k === s
+                    ? `border-b-2 ${miss ? "border-red-500 text-red-500" : "border-[var(--kit-accent)] text-[var(--kit-accent)]"}`
+                    : "text-zinc-300"
+              }
+            >
+              {show(st)}
+            </span>
+          ))}
+          <span className="text-sm font-normal text-zinc-400">{bar.c}</span>
         </div>
-        <div className="text-base text-zinc-300">다음 {MAGIC.pat[(i + 1) % MAGIC.pat.length]}</div>
+        <div className="text-base text-zinc-300">{MAGIC[(Math.floor(at / 4) + 1) % MAGIC.length].steps.map(show).join("  ")}</div>
       </div>
-      {bar < 0 ? (
-        <StartButton onClick={go} label={wait ? "피아노 꺼내는 중…" : "▶ 반주 시작"} />
+      {on ? (
+        <Keypad free={false} lit={[...need].filter((ch) => !got.current.includes(ch)).join("")} oct0={5} onNote={onNote} />
       ) : (
-        <Keypad free={false} lit={pat} oct0={5} onNote={(_, n) => hold(n, 0.22)} />
+        <StartButton
+          onClick={() => {
+            unlock();
+            setOn(true);
+          }}
+        />
       )}
     </>
   );

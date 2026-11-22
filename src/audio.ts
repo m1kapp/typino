@@ -4,15 +4,9 @@
 let ctx: AudioContext | null = null;
 let out: AudioNode; // 모든 소리가 들어가는 곳 — 원음 + 잔향 → 압축기 → 스피커
 const bufs = new Map<number, AudioBuffer>();
-let loaded: Promise<unknown> = Promise.resolve();
 
-/** 피아노 녹음을 다 받을 때까지 (못 받은 건 건너뛴다) */
-export const ready = () => loaded;
 const SAMPLE = ["C", "Ds", "Fs", "A"]; // 3반음 간격, 1~6옥타브
 const LOUD = 4; // 녹음은 최고 -10dB 쯤이라 삼각파 때와 크기를 맞춘다
-
-/** 소리 시계 — 반주가 박자를 미리 예약할 때 쓴다 */
-export const now = () => ctx?.currentTime ?? 0;
 
 /** 탭 같은 사용자 동작 안에서 불러야 iOS 가 소리를 연다 */
 export function unlock() {
@@ -48,17 +42,13 @@ function room(c: AudioContext) {
 }
 
 function load(c: AudioContext) {
-  const all = [];
   for (let o = 1; o <= 6; o++)
     for (const [k, n] of SAMPLE.entries())
-      all.push(
-        fetch(`/piano/${n}${o}.mp3`)
-          .then((r) => r.arrayBuffer())
-          .then((a) => c.decodeAudioData(a))
-          .then((b) => bufs.set(12 * (o + 1) + k * 3, b))
-          .catch(() => {}), // 못 받은 음은 삼각파로
-      );
-  loaded = Promise.all(all);
+      fetch(`/piano/${n}${o}.mp3`)
+        .then((r) => r.arrayBuffer())
+        .then((a) => c.decodeAudioData(a))
+        .then((b) => bufs.set(12 * (o + 1) + k * 3, b))
+        .catch(() => {}); // 못 받은 음은 삼각파로
 }
 
 /** 가장 가까운 녹음 */
@@ -139,12 +129,12 @@ export function hold(midi: number, gain = 0.25): () => void {
 let padOn: { key: string; g: GainNode; os: OscillatorNode[] } | null = null;
 let padIdle = 0;
 
-/** 코드 음들을 현악으로 깐다. 같은 코드면 그대로 잇고, 다르면 넘겨 받는다. idle 동안 안 부르면 스스로 사라진다 */
-export function pad(notes: number[], idle = 3000) {
+/** 코드 음들을 현악으로 깐다. 같은 코드면 그대로 잇고, 다르면 넘겨 받는다. 3초 동안 안 부르면 스스로 사라진다 */
+export function pad(notes: number[]) {
   const c = ctx;
   if (!c) return;
   clearTimeout(padIdle);
-  padIdle = window.setTimeout(quiet, idle);
+  padIdle = window.setTimeout(quiet, 3000);
   const key = notes.join();
   if (padOn?.key === key) return;
   quiet();
@@ -213,10 +203,10 @@ function hit(c: AudioContext, hp: number, gain: number, len: number, t: number) 
   src.stop(t + len);
 }
 
-export function drum(kind: "kick" | "snare" | "hat", when = 0) {
+export function drum(kind: "kick" | "snare" | "hat") {
   const c = ctx;
   if (!c) return;
-  const t = c.currentTime + when;
+  const t = c.currentTime;
   if (kind === "hat") return hit(c, 7000, 0.06, 0.05, t);
   if (kind === "snare") hit(c, 1200, 0.22, 0.18, t);
   const o = c.createOscillator();
