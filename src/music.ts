@@ -10,27 +10,16 @@ export const SONGS: Song[] = [
     "[C]G4 G4 [F]F4 F4 / [C]E4 E4 [G]D4", "[C]G4 G4 [F]F4 F4 / [C]E4 E4 [G]D4",
     "[C]C4 C4 G4 G4 / [F]A4 A4 [C]G4", "[F]F4 F4 [C]E4 E4 / [G]D4 D4 [C]C4",
   ] },
-  { id: "lamb", title: "어린 양", by: "미국 민요", lines: [
-    "[C]E4 D4 C4 D4 / E4 E4 E4", "[G]D4 D4 D4 / [C]E4 G4 G4",
-    "[C]E4 D4 C4 D4 / E4 E4 E4", "[G]D4 D4 E4 D4 / [C]C4",
-  ] },
-  { id: "joy", title: "환희", by: "베토벤", lines: [
-    "[C]E4 E4 F4 G4 / [G]G4 F4 E4 D4 / [C]C4 C4 D4 E4 / [G]E4 D4 D4",
-    "[C]E4 E4 F4 G4 / [G]G4 F4 E4 D4 / [C]C4 C4 D4 E4 / [G]D4 [C]C4 C4",
-    "[G]D4 D4 E4 [C]C4 / [G]D4 E4 F4 E4 [C]C4 / [G]D4 E4 F4 E4 D4 / [C]C4 D4 [G]G3",
-    "[C]E4 E4 F4 G4 / [G]G4 F4 E4 D4 / [C]C4 C4 D4 E4 / [G]D4 [C]C4 C4",
-  ] },
-  { id: "birthday", title: "생일", by: "힐 자매", lines: [
+  { id: "birthday", title: "생일 축하", by: "힐 자매", lines: [
     "G4 G4 [C]A4 G4 / C5 [G]B4", "G4 G4 [G]A4 G4 / D5 [C]C5",
     "G4 G4 [C]G5 E5 / C5 [F]B4 A4", "[F]F5 F5 [C]E5 C5 / [G]D5 [C]C5",
   ] },
-  // 원곡 D장조 → C장조. 변주가 갈수록 빨라져 뒤로 갈수록 어렵다
+  // 원곡 D장조 → C장조. 제1바이올린 첫 세 변주(2분음표 둘, 4분음표 하나)
   { id: "canon", title: "캐논", by: "파헬벨", lines: [
     "[C]E5 [G]D5 / [Am]C5 [Em]B4 / [F]A4 [C]G4 / [F]A4 [G]B4",
-    "[C]C5 [G]B4 / [Am]A4 [Em]G4 / [F]F4 [C]E4 / [F]F4 [G]G4",
+    "[C]C5 [G]B4 / [Am]A4 [Em]G4 / [F]F4 [C]E4 / [F]F4 [G]D4",
     "[C]C4 E4 [G]G4 F4 / [Am]E4 C4 [Em]E4 D4",
     "[F]C4 A3 [C]C4 G4 / [F]F4 A4 [G]G4 F4",
-    "[C]E5 C5 D5 E5 C5 D5 E5 E4 / [G]F4 G4 A4 B4 C5 D5 E5 F5",
   ] },
 ];
 
