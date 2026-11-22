@@ -541,12 +541,14 @@ function TextSong() {
     timers.current.push(window.setTimeout(() => setAt(-1), ms + 400));
   };
 
-  // 치는 순간: 방금 친(또는 조합 중인) 마지막 글자의 음
+  // 한 글자를 다 쓰고 다음 글자로 넘어가는 순간 — 방금 완성된 앞 글자의 음. 조합 중(가→각)에는 소리 없음
   const type = (v: string) => {
     unlock();
+    const grew = [...v].length > [...text].length;
     setText(v);
+    if (!grew) return;
     const tones = compose(v).tones;
-    const i = tones.length - 1;
+    const i = tones.length - 2;
     if (i < 0) return;
     const chordAt = [...tones.slice(0, i + 1)].reverse().find((t) => t.chord)?.chord ?? null;
     sound(tones[i], tones[i].chord ? 0 : 1, chordAt, 350);
