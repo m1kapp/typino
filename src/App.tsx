@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { AppShell, AppShellContent, AppShellHeader, Section, SegmentedControl, Watermark } from "@m1kapp/kit";
+import { AppShell, AppShellContent, AppShellHeader, Section, Watermark } from "@m1kapp/kit";
 import { chord, fitChord, fromSolfa, noteName, parse, solfa, SOLFA, SONGS } from "./music";
 import { hold, play, unlock } from "./audio";
 
@@ -158,11 +158,18 @@ function Player() {
 
   return (
     <Section className="flex flex-col gap-6 px-4 pt-4 pb-8">
-      <SegmentedControl
-        value={songId}
-        onChange={(id) => restart(id)}
-        options={[{ value: "free", label: "자유" }, ...SONGS.map((s) => ({ value: s.id, label: s.title })), { value: "mine", label: "내 곡" }]}
-      />
+      {/* 곡이 늘어 한 줄에 다 안 들어간다 — 옆으로 넘긴다 */}
+      <div className="scrollbar-hide -mx-4 flex gap-2 overflow-x-auto px-4">
+        {[{ id: "free", title: "자유" }, { id: "mine", title: "내 곡" }, ...SONGS].map((t) => (
+          <button
+            key={t.id}
+            onClick={() => restart(t.id)}
+            className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold ${songId === t.id ? "bg-[var(--kit-accent)] text-white" : "bg-zinc-100 text-zinc-500"}`}
+          >
+            {t.title}
+          </button>
+        ))}
+      </div>
 
       {free ? (
         <div className="flex flex-col gap-2">
