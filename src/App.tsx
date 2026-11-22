@@ -1,10 +1,10 @@
 import { useRef, useState } from "react";
 import { AppShell, AppShellContent, AppShellHeader, Section, SegmentedControl, Watermark } from "@m1kapp/kit";
-import { chord, noteName, pressed, split, SONGS } from "./music";
+import { noteAt, noteName, SONGS, thirdBelow, typedMore } from "./music";
 import { play, unlock } from "./audio";
 
 const ACCENT = "#c2410c";
-type SongId = (typeof SONGS)[number]["id"];
+type SongId = string;
 
 export default function App() {
   return (
@@ -12,7 +12,7 @@ export default function App() {
       <AppShell accent={ACCENT}>
         <AppShellHeader>
           <span className="text-lg font-black tracking-tight text-zinc-900">typino</span>
-          <span className="text-xs text-zinc-400">치면 시가 노래가 된다</span>
+          <span className="text-xs text-zinc-400">타자 치면 노래가 된다</span>
         </AppShellHeader>
         <AppShellContent>
           <Player />
@@ -27,11 +27,12 @@ function Player() {
   const [row, setRow] = useState(0);
   const [value, setValue] = useState("");
   const [started, setStarted] = useState(false);
-  const [last, setLast] = useState<{ ch: string; notes: number[] } | null>(null);
+  const [last, setLast] = useState<{ ch: string; note: number } | null>(null);
   const input = useRef<HTMLInputElement>(null);
 
   const song = SONGS.find((s) => s.id === songId)!;
-  const line: string | undefined = song.lines[row];
+  const line = song.lines[row];
+  const lyric = line?.[0];
   const done = value.length - 1; // 마지막 글자는 아직 조합 중일 수 있어 판정하지 않는다
 
   const start = () => {
@@ -47,26 +48,27 @@ function Player() {
     input.current?.focus();
   };
 
-  const ding = (ch: string) => {
-    const notes = chord(ch)!;
-    notes.forEach((n, k) => play(n, k * 0.012, 0.22)); // 살짝 굴려서 한 덩어리로
-    setLast({ ch, notes });
+  // 선율 음 + 3도 아래 음을 같이 — 피아노 오른손 두 손가락
+  const ding = (ch: string, note: number) => {
+    play(note, 0, 0.24);
+    play(thirdBelow(note), 0.01, 0.1);
+    setLast({ ch, note });
   };
 
   const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = e.target.value;
-    // 글자 하나 = 띵 하나. 치는 글자가 그 자리 글자와 같아지는 순간 바로 울린다
-    // (다 → 띵, 리 → 띵). 다음 글자로 넘어가길 기다리지 않는다.
+    // 가사 한 글자를 다 치는 순간 그 글자에 붙은 음이 바로 나간다
     const i = (e.target.selectionStart ?? v.length) - 1;
     const ch = v[i];
-    if (line && pressed(value, v).length && ch && split(ch)) {
-      if (ch === line[i]) ding(ch);
+    if (line && typedMore(value, v) && ch) {
+      const note = noteAt(line, i);
+      if (ch === lyric[i] && note !== null) ding(ch, note);
       // 목표와 다른 채로 다음 글자로 넘어가면 그 글자는 틀린 것 — 낮게 툭
-      else if (v.length > value.length && v[i - 1] && v[i - 1] !== line[i - 1]) play(37, 0, 0.15, 0.25);
+      else if (v.length > value.length && v[i - 1] && v[i - 1] !== lyric[i - 1]) play(37, 0, 0.15, 0.25);
     }
 
     // 줄을 다 치고 스페이스 → 다음 줄. 스페이스로 조합이 끝난 뒤라 비워도 글자가 안 남는다
-    if (line && v === line + " ") {
+    if (line && v === lyric + " ") {
       setRow((r) => r + 1);
       setValue("");
     } else {
@@ -88,7 +90,7 @@ function Player() {
         </div>
         <div className="min-h-10 text-[26px] leading-snug font-semibold break-keep">
           {line ? (
-            [...line].map((c, i) => (
+            [...lyric].map((c, i) => (
               <span
                 key={i}
                 className={
@@ -101,10 +103,10 @@ function Player() {
               </span>
             ))
           ) : (
-            <span className="text-zinc-900">끝 — 잘 들었어요</span>
+            <span className="text-zinc-900">끝 — 한 곡 완주!</span>
           )}
         </div>
-        <div className="min-h-6 text-base text-zinc-300">{song.lines[row + 1] ?? ""}</div>
+        <div className="min-h-6 text-base text-zinc-300">{song.lines[row + 1]?.[0] ?? ""}</div>
       </div>
 
       {line ? (
@@ -118,7 +120,7 @@ function Player() {
             autoCapitalize="off"
             spellCheck={false}
             enterKeyHint="next"
-            placeholder="따라 치세요 · 줄 끝에서 스페이스"
+            placeholder="가사를 치면 노래가 나와요 · 줄 끝에서 스페이스"
             className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3.5 text-xl outline-none focus:border-[var(--kit-accent)]"
           />
           {!started && (
@@ -140,14 +142,14 @@ function Player() {
         {last && (
           <>
             <b className="mr-2 font-sans text-2xl text-[var(--kit-accent)]">{last.ch}</b>
-            {split(last.ch)!.filter(Boolean).join(" ")} → {last.notes.map(noteName).join(" · ")}
+            {noteName(last.note)}
           </>
         )}
       </div>
 
       <p className="text-xs leading-relaxed text-zinc-400">
-        글자 하나 = 띵 하나. 글자를 다 치는 순간 초성·중성·종성이 한 화음으로 울리고, 받침은 베이스가 됩니다. 음계는 C 펜타토닉이라
-        어떤 글자든 안 어긋나요.
+        곡의 음정은 정해져 있어요. 가사 한 글자를 칠 때마다 다음 음이 나가서, 치는 빠르기가 곧 노래의 박자가 됩니다.
+        틀린 글자는 소리 대신 툭.
       </p>
     </Section>
   );
