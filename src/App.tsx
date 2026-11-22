@@ -38,9 +38,9 @@ function Player() {
   // 내 곡: 직접 적은 계이름. 이 브라우저에만 남는다
   const [mine, setMine] = useState(() => {
     try {
-      return localStorage.getItem(MINE) ?? "";
+      return localStorage.getItem(MINE) ?? NABI;
     } catch {
-      return "";
+      return NABI;
     }
   });
   const [draft, setDraft] = useState(mine); // 적는 중인 글 — 치기를 눌러야 곡이 된다
@@ -52,7 +52,7 @@ function Player() {
   const song =
     songId === "mine"
       ? mineLines.length
-        ? { id: "mine", title: "내 곡", by: "직접 적은 곡", lines: mineLines }
+        ? { id: "mine", title: "내 곡", by: mine === NABI ? "예시 · 나비야" : "직접 적은 곡", lines: mineLines }
         : undefined
       : SONGS.find((s) => s.id === songId);
   const line = song?.lines[row] ? parse(song.lines[row]) : null;
@@ -301,6 +301,8 @@ function step(lines: string[], r: number, p: number): [number, number] {
 }
 
 const MINE = "typino.mine";
+// 내 곡을 아직 안 적었을 때 보여 줄 예시 — 나비야(독일 민요 Hänschen klein). 8분음표 = 1박
+const NABI = "솔미미ㅡ 파레레ㅡ 도레미파 솔솔솔ㅡ\n솔미미ㅡ 파레레ㅡ 도미솔솔 도ㅡㅡㅡ\n레레레레 레미파ㅡ 미미미미 미파솔ㅡ\n솔미미ㅡ 파레레ㅡ 도미솔솔 도ㅡㅡㅡ";
 
 // 2박 이상인 음 뒤에 작대기 — 그만큼 쭉 누르라는 표시
 const holds = (b: number) => "ㅡ".repeat(Math.max(0, Math.round(b) - 1));
