@@ -1,6 +1,6 @@
 // node --experimental-strip-types src/music.check.ts
 import assert from "node:assert/strict";
-import { chord, fitChord, midi, parse, solfa, SONGS } from "./music.ts";
+import { chord, fitChord, fromSolfa, midi, parse, solfa, SONGS } from "./music.ts";
 
 assert.equal(midi("C4"), 60);
 assert.deepEqual(chord("C"), [36, 48, 52, 55]);
@@ -31,5 +31,16 @@ assert.equal(fitChord(67, "C"), "C");
 assert.equal(fitChord(69, "C"), "F");
 assert.equal(fitChord(71, null), "G");
 assert.equal(fitChord(66, "G"), "G"); // 파♯ — 품는 코드 없음, 그대로
+
+// 내 곡: 계이름 글이 곡 데이터로 — 작은 별 첫 줄과 같은 음·같은 화면
+const mine = fromSolfa("도도솔솔 라라솔ㅡ\n\n파파미미 레레도ㅡ  ");
+assert.equal(mine.length, 2);
+assert.equal(parse(mine[0]).text, "도도솔솔 라라솔");
+assert.deepEqual(parse(mine[0]).notes, first.notes);
+assert.deepEqual(parse(mine[0]).beats, first.beats);
+assert.equal(parse(mine[1]).notes.at(-1), 60);
+assert.deepEqual(fromSolfa("안녕 abc"), []);
+assert.deepEqual(parse(fromSolfa("높도 낮시 높높솔")[0]).notes, [72, null, 59, null, 91]);
+assert.equal(parse(fromSolfa("높도")[0]).text, "도"); // 높·낮은 글에 안 남는다
 
 console.log("music ok");

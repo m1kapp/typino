@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { AppShell, AppShellContent, AppShellHeader, Section, SegmentedControl, Watermark } from "@m1kapp/kit";
-import { chord, fitChord, noteName, parse, solfa, SOLFA, SONGS } from "./music";
+import { chord, fitChord, fromSolfa, noteName, parse, solfa, SOLFA, SONGS } from "./music";
 import { hold, play, unlock } from "./audio";
 
 const ACCENT = "#c2410c";
@@ -35,8 +35,26 @@ function Player() {
   const [ringing, setRinging] = useState(false); // 방금 맞힌 음이 아직 제 길이만큼 울리는 중
   const ring = useRef(0);
 
+  // 내 곡: 직접 적은 계이름. 이 브라우저에만 남는다
+  const [mine, setMine] = useState(() => {
+    try {
+      return localStorage.getItem(MINE) ?? "";
+    } catch {
+      return "";
+    }
+  });
+  const [draft, setDraft] = useState(mine); // 적는 중인 글 — 치기를 눌러야 곡이 된다
+  const [editing, setEditing] = useState(false);
+  const mineLines = fromSolfa(mine);
+
   const free = songId === "free";
-  const song = SONGS.find((s) => s.id === songId);
+  const edit = songId === "mine" && (editing || !mineLines.length);
+  const song =
+    songId === "mine"
+      ? mineLines.length
+        ? { id: "mine", title: "내 곡", by: "직접 적은 곡", lines: mineLines }
+        : undefined
+      : SONGS.find((s) => s.id === songId);
   const line = song?.lines[row] ? parse(song.lines[row]) : null;
   const lyric = line?.text ?? "";
 
@@ -51,6 +69,7 @@ function Player() {
     ring.current = 0;
     setRinging(false);
     setDemo(false);
+    setEditing(false);
     setSongId(id);
     setRow(0);
     setPos(0);
@@ -142,7 +161,7 @@ function Player() {
       <SegmentedControl
         value={songId}
         onChange={(id) => restart(id)}
-        options={[{ value: "free", label: "자유" }, ...SONGS.map((s) => ({ value: s.id, label: s.title }))]}
+        options={[{ value: "free", label: "자유" }, ...SONGS.map((s) => ({ value: s.id, label: s.title })), { value: "mine", label: "내 곡" }]}
       />
 
       {free ? (
@@ -161,6 +180,31 @@ function Player() {
             )}
           </div>
         </div>
+      ) : edit ? (
+        <div className="flex flex-col gap-2">
+          <div className="text-xs text-zinc-400">계이름으로 적기 · ㅡ 는 한 박 더 · 높도·낮시 · 줄바꿈은 다음 줄</div>
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={6}
+            placeholder={"도도솔솔 라라솔ㅡ\n파파미미 레레도ㅡ"}
+            className="rounded-2xl border border-zinc-200 p-3 text-xl leading-relaxed outline-none focus:border-[var(--kit-accent)]"
+          />
+          <StartButton
+            label="이걸로 치기"
+            onClick={() => {
+              if (!fromSolfa(draft).length) return;
+              setMine(draft);
+              try {
+                localStorage.setItem(MINE, draft);
+              } catch {
+                /* 저장이 막혀도 이번엔 친다 */
+              }
+              restart("mine");
+              start();
+            }}
+          />
+        </div>
       ) : (
         song && (
           <div className="flex flex-col gap-2">
@@ -168,9 +212,23 @@ function Player() {
               <span>
                 {song.by} · {Math.min(row + 1, song.lines.length)}/{song.lines.length}
               </span>
-              <button onClick={demo ? () => restart() : listen} className="font-bold text-[var(--kit-accent)]">
-                {demo ? "■ 멈춤" : "♪ 들어보기"}
-              </button>
+              <span className="flex gap-4">
+                {songId === "mine" && (
+                  <button
+                    onClick={() => {
+                      restart();
+                      setDraft(mine);
+                      setEditing(true);
+                    }}
+                    className="font-bold text-zinc-500"
+                  >
+                    고치기
+                  </button>
+                )}
+                <button onClick={demo ? () => restart() : listen} className="font-bold text-[var(--kit-accent)]">
+                  {demo ? "■ 멈춤" : "♪ 들어보기"}
+                </button>
+              </span>
             </div>
             <div className="min-h-10 text-[26px] leading-snug font-semibold break-keep">
               {line ? (
@@ -210,7 +268,7 @@ function Player() {
         )
       )}
 
-      {!started ? (
+      {edit ? null : !started ? (
         <StartButton onClick={start} />
       ) : free || line ? (
         <Keypad free={free} hint={line && !ringing ? lyric[pos] : undefined} onNote={hit} />
@@ -241,6 +299,8 @@ function step(lines: string[], r: number, p: number): [number, number] {
   const n = t[p + 1] === " " ? p + 2 : p + 1;
   return n < t.length ? [r, n] : [r + 1, 0];
 }
+
+const MINE = "typino.mine";
 
 // 2박 이상인 음 뒤에 작대기 — 그만큼 쭉 누르라는 표시
 const holds = (b: number) => "ㅡ".repeat(Math.max(0, Math.round(b) - 1));

@@ -73,3 +73,29 @@ export function fitChord(note: number, cur: string | null): string | null {
   const has = (c: string) => chord(c).some((n) => n % 12 === note % 12);
   return cur && has(cur) ? cur : ["C", "F", "G", "Am", "Dm", "Em"].find(has) ?? cur; // 샵·내림은 품는 코드가 없어 그대로
 }
+
+/** 직접 친 계이름 글 → 곡 줄 데이터. "솔솔라ㅡ 높도" — 높이는 도4~시4, 앞에 높·낮을 붙이면 한 옥타브씩,
+ *  ㅡ 는 한 박 더, 띄어쓰기는 쉼, 줄바꿈은 다음 줄, 반주는 fitChord */
+export function fromSolfa(src: string): string[] {
+  let cur: string | null = null;
+  return src.split("\n").map((line) => {
+    const toks: ({ c: string; n: number; b: number } | "/")[] = [];
+    let oct = 0;
+    for (const ch of line.trim()) {
+      const last = toks[toks.length - 1];
+      if (ch === "높") { oct++; continue; }
+      if (ch === "낮") { oct--; continue; }
+      if (ch === " ") { if (last && last !== "/") toks.push("/"); continue; }
+      if (ch === "ㅡ" || ch === "-") { if (last && last !== "/") last.b++; continue; }
+      const pc = SOLFA.indexOf(ch);
+      if (pc < 0 || ch === "_") continue; // 계이름 말고는 건너뜀
+      const n = 60 + pc + 12 * oct;
+      oct = 0;
+      const c = fitChord(n, cur);
+      toks.push({ c: c !== cur ? `[${c}]` : "", n, b: 1 });
+      cur = c;
+    }
+    if (toks[toks.length - 1] === "/") toks.pop();
+    return toks.map((t) => (t === "/" ? "/" : t.c + noteName(t.n) + (t.b > 1 ? `:${t.b}` : ""))).join(" ");
+  }).filter(Boolean);
+}
