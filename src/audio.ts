@@ -124,3 +124,99 @@ export function hold(midi: number, gain = 0.25): () => void {
     os.forEach((o) => o.stop(now + 0.6));
   };
 }
+
+// ---- 현악 깔개: 지금 코드를 길게 깐다. 박자가 없어서 누르는 빠르기와 상관없이 어울린다 ----
+let padOn: { key: string; g: GainNode; os: OscillatorNode[] } | null = null;
+let padIdle = 0;
+
+/** 코드 음들을 현악으로 깐다. 같은 코드면 그대로 잇고, 다르면 넘겨 받는다. 3초 동안 안 누르면 스스로 사라진다 */
+export function pad(notes: number[]) {
+  const c = ctx;
+  if (!c) return;
+  clearTimeout(padIdle);
+  padIdle = window.setTimeout(quiet, 3000);
+  const key = notes.join();
+  if (padOn?.key === key) return;
+  quiet();
+  const t = c.currentTime;
+  const g = c.createGain();
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(1, t + 0.5); // 활을 천천히 긋는다
+  const lp = c.createBiquadFilter(); // 톱니파의 거친 윗소리를 깎아 현처럼
+  lp.type = "lowpass";
+  lp.frequency.value = 1400;
+  g.connect(lp).connect(out);
+  const vib = c.createOscillator(); // 떨림
+  const depth = c.createGain();
+  vib.frequency.value = 5;
+  depth.gain.value = 6; // 센트
+  vib.connect(depth);
+  const os = [vib];
+  for (const n of notes)
+    for (const det of [-7, 7]) {
+      const o = c.createOscillator();
+      const og = c.createGain();
+      o.type = "sawtooth";
+      o.frequency.value = 440 * 2 ** ((n - 69) / 12);
+      o.detune.value = det;
+      depth.connect(o.detune);
+      og.gain.value = 0.018;
+      o.connect(og).connect(g);
+      os.push(o);
+    }
+  os.forEach((o) => o.start(t));
+  padOn = { key, g, os };
+}
+
+/** 깔개를 걷는다 */
+export function quiet() {
+  const c = ctx;
+  if (!c || !padOn) return;
+  const now = c.currentTime;
+  padOn.g.gain.cancelScheduledValues(now);
+  padOn.g.gain.setValueAtTime(padOn.g.gain.value, now);
+  padOn.g.gain.setTargetAtTime(0, now, 0.25);
+  padOn.os.forEach((o) => o.stop(now + 1.5));
+  padOn = null;
+}
+
+// ---- 드럼: 녹음 없이 만든다. 누를 때 같이 친다 ----
+let noise: AudioBuffer | null = null;
+
+function hit(c: AudioContext, hp: number, gain: number, len: number) {
+  noise ??= (() => {
+    const b = c.createBuffer(1, c.sampleRate * 0.3, c.sampleRate);
+    const d = b.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    return b;
+  })();
+  const t = c.currentTime;
+  const src = c.createBufferSource();
+  src.buffer = noise;
+  const f = c.createBiquadFilter();
+  f.type = "highpass";
+  f.frequency.value = hp;
+  const g = c.createGain();
+  g.gain.setValueAtTime(gain, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + len);
+  src.connect(f).connect(g).connect(out);
+  src.start(t);
+  src.stop(t + len);
+}
+
+export function drum(kind: "kick" | "snare" | "hat") {
+  const c = ctx;
+  if (!c) return;
+  if (kind === "hat") return hit(c, 7000, 0.06, 0.05);
+  if (kind === "snare") hit(c, 1200, 0.22, 0.18);
+  const t = c.currentTime;
+  const o = c.createOscillator();
+  const g = c.createGain();
+  o.frequency.setValueAtTime(kind === "kick" ? 140 : 200, t);
+  o.frequency.exponentialRampToValueAtTime(kind === "kick" ? 45 : 120, t + 0.12);
+  g.gain.setValueAtTime(kind === "kick" ? 0.6 : 0.12, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + (kind === "kick" ? 0.35 : 0.12));
+  o.connect(g).connect(out);
+  o.start(t);
+  o.stop(t + 0.4);
+}

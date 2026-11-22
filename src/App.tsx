@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { AppShell, AppShellContent, AppShellHeader, Section, Watermark } from "@m1kapp/kit";
 import { chord, fitChord, fromSolfa, noteName, parse, solfa, SOLFA, SONGS } from "./music";
-import { hold, play, unlock } from "./audio";
+import { drum, hold, pad, play, quiet, unlock } from "./audio";
 
 const ACCENT = "#c2410c";
 
@@ -30,6 +30,7 @@ function Player() {
   const [last, setLast] = useState<{ label: string; note: number } | null>(null);
   const [played, setPlayed] = useState<{ label: string; note: number }[]>([]);
   const cur = useRef<string | null>(null); // 지금 깔린 반주 코드
+  const [drumOn, setDrumOn] = useState(true);
   const step8 = useRef(0); // 코드가 바뀐 뒤 몇 번째 음인지 — 왼손 쿵·짝 차례
   const timers = useRef<number[]>([]); // 들어보기 예약
   const [demo, setDemo] = useState(false);
@@ -79,6 +80,8 @@ function Player() {
     setPlayed([]);
     cur.current = null;
     step8.current = 0;
+    quiet();
+    if (id !== songId) setDrumOn(id === "free" || id === "mine" || !!SONGS.find((s) => s.id === id)?.drums); // 곡을 바꿀 때만 — 들어보기로 내 선택이 풀리지 않게
   };
 
   // 오른손 선율 + 왼손 반주. 누르는 동안 이어지는 소리 — 떼는 함수를 돌려준다
@@ -90,7 +93,13 @@ function Player() {
         cur.current = c;
         step8.current = 0;
       } else step8.current++;
-      if (cur.current) comp(cur.current, step8.current);
+      const k = step8.current;
+      if (cur.current) {
+        comp(cur.current, k);
+        const [, r, t, f] = chord(cur.current);
+        pad([r, t, f, r + 12]);
+      }
+      if (drumOn) drum(k % 4 === 0 ? "kick" : k % 4 === 2 ? "snare" : "hat");
     }
     setLast({ label, note });
     return release;
@@ -181,7 +190,10 @@ function Player() {
 
       {free ? (
         <div className="flex flex-col gap-2">
-          <div className="text-xs text-zinc-400">악보 없이 · 외운 계이름을 눌러 보세요 · 반주는 알아서</div>
+          <div className="flex items-center justify-between text-xs text-zinc-400">
+            <span>악보 없이 · 외운 계이름을 눌러 보세요</span>
+            <DrumToggle on={drumOn} set={setDrumOn} />
+          </div>
           <div className="min-h-10 text-[26px] leading-snug font-semibold break-all">
             {played.length ? (
               played.map((p, i) => (
@@ -228,6 +240,7 @@ function Player() {
                 {song.by} · {Math.min(row + 1, song.lines.length)}/{song.lines.length}
               </span>
               <span className="flex gap-4">
+                <DrumToggle on={drumOn} set={setDrumOn} />
                 {songId === "mine" && (
                   <button
                     onClick={() => {
@@ -333,6 +346,14 @@ const NABI = "솔미미ㅡ 파레레ㅡ 도레미파 솔솔솔ㅡ\n솔미미ㅡ 
 // 2박 이상인 음 뒤에 작대기 — 그만큼 쭉 누르라는 표시
 const holds = (b: number) => "ㅡ".repeat(Math.max(0, Math.round(b) - 1));
 const withHolds = (p: { text: string; beats: number[] }) => [...p.text].map((c, i) => c + holds(p.beats[i])).join("");
+
+function DrumToggle({ on, set }: { on: boolean; set: (f: (b: boolean) => boolean) => void }) {
+  return (
+    <button onClick={() => set((b) => !b)} className={`font-bold ${on ? "text-zinc-700" : "text-zinc-300 line-through"}`}>
+      드럼
+    </button>
+  );
+}
 
 function StartButton({ onClick, label = "▶ 연주 시작" }: { onClick: () => void; label?: string }) {
   return (

@@ -1,7 +1,7 @@
 // 화면에 나온 계이름을 치면 그 음이 난다. 도레미를 치면 도레미가 — 자판이 건반이다.
 
 /** 음표는 "G4" 처럼, 길이는 박 수로 "G4:2"(없으면 1박), 띄어쓰기는 "/", 반주 코드는 음 앞에 "[F]". 화면에 보일 계이름은 여기서 만든다 */
-export type Song = { id: string; title: string; by: string; lines: string[] };
+export type Song = { id: string; title: string; by: string; lines: string[]; drums?: boolean }; // drums: 드럼이 어울리는 곡
 
 // 선율은 저작권이 끝난 것만
 export const SONGS: Song[] = [
@@ -10,7 +10,7 @@ export const SONGS: Song[] = [
     "[C]G4 G4 [F]F4 F4 / [C]E4 E4 [G]D4:2", "[C]G4 G4 [F]F4 F4 / [C]E4 E4 [G]D4:2",
     "[C]C4 C4 G4 G4 / [F]A4 A4 [C]G4:2", "[F]F4 F4 [C]E4 E4 / [G]D4 D4 [C]C4:2",
   ] },
-  { id: "birthday", title: "생일 축하", by: "힐 자매", lines: [
+  { id: "birthday", title: "생일 축하", by: "힐 자매", drums: true, lines: [
     "G4:0.75 G4:0.25 [C]A4 G4 / C5 [G]B4:2", "G4:0.75 G4:0.25 [G]A4 G4 / D5 [C]C5:2",
     "G4:0.75 G4:0.25 [C]G5 E5 / C5 [F]B4 A4:2", "[F]F5:0.75 F5:0.25 [C]E5 C5 / [G]D5 [C]C5:3",
   ] },
@@ -22,14 +22,14 @@ export const SONGS: Song[] = [
     "[F]C4 A3 [C]C4 G4 / [F]F4 A4 [G]G4 F4",
   ] },
   // 피어폰트 1857. 4분음표 = 1박
-  { id: "jingle", title: "징글벨", by: "피어폰트", lines: [
+  { id: "jingle", title: "징글벨", by: "피어폰트", drums: true, lines: [
     "[C]E4 E4 E4:2 / E4 E4 E4:2", "E4 G4 C4:1.5 D4:0.5 / E4:4",
     "[F]F4 F4 F4:1.5 F4:0.5 / F4 [C]E4 E4 E4:0.5 E4:0.5", "E4 [G]D4 D4 E4 / D4:2 G4:2",
     "[C]E4 E4 E4:2 / E4 E4 E4:2", "E4 G4 C4:1.5 D4:0.5 / E4:4",
     "[F]F4 F4 F4:1.5 F4:0.5 / F4 [C]E4 E4 E4:0.5 E4:0.5", "[G]G4 G4 F4 D4 / [C]C4:4",
   ] },
   // 베토벤 9번 4악장 주제. 4분음표 = 1박
-  { id: "joy", title: "환희의 송가", by: "베토벤", lines: [
+  { id: "joy", title: "환희의 송가", by: "베토벤", drums: true, lines: [
     "[C]E4 E4 F4 G4 / [G]G4 F4 E4 D4", "[C]C4 C4 D4 E4 / [G]E4:1.5 D4:0.5 D4:2",
     "[C]E4 E4 F4 G4 / [G]G4 F4 E4 D4", "[C]C4 C4 D4 E4 / [G]D4:1.5 [C]C4:0.5 C4:2",
     "[G]D4 D4 E4 C4 / D4 E4:0.5 F4:0.5 [C]E4 C4", "[G]D4 E4:0.5 F4:0.5 E4 D4 / C4 D4 G3:2",

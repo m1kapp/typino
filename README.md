@@ -29,3 +29,5 @@ Vite + React + [@m1kapp/kit](https://github.com/m1kapp/kit)
 - 피아노는 [Salamander Grand Piano](https://archive.org/details/SalamanderGrandPianoV3) 녹음(Alexander Holm, CC BY 3.0)을 단3도마다 한 장씩, 모노 64kbps 6초로 줄여 `public/piano/` 에 둔다. 사이 음은 재생 속도로 낸다. 못 받으면 삼각파로
 - 방 울림(잔향)을 살짝 지난다
 - 왼손은 누를 때마다 쿵(베이스)·짝(화음)을 번갈아 친다 — 내 손 빠르기가 곧 반주 빠르기
+- 현악이 지금 코드를 길게 깐다. 3초 안 누르면 걷힌다
+- 드럼(킥·스네어·하이햇)도 누를 때 같이 친다. 어울리는 곡(생일·징글벨·환희의 송가)과 자유·내 곡에서 켜져 있고 화면의 "드럼"으로 끄고 켠다
