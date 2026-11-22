@@ -52,8 +52,6 @@ export function chord(name: string): number[] {
   return [r - 12, r, r + (m[2] ? 3 : 4), r + 7];
 }
 
-export const isSyllable = (ch: string | undefined) => !!ch && ch >= "가" && ch <= "힣";
-
 export const SOLFA = "도_레_미파_솔_라_시"; // 반음 자리는 _ — C장조 흰건반만
 
 /** 줄 데이터 → 화면에 칠 계이름 글과 글자 자리별 음 */
@@ -83,21 +81,4 @@ export function solfa(ch: string, near: number): number | null {
 export function fitChord(note: number, cur: string | null): string | null {
   const has = (c: string) => chord(c).some((n) => n % 12 === note % 12);
   return cur && has(cur) ? cur : ["C", "F", "G", "Am", "Dm", "Em"].find(has) ?? cur; // 샵·내림은 품는 코드가 없어 그대로
-}
-
-const CHO = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ";
-const JUNG = "ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ";
-const JONG = ["", ..."ㄱㄲㄳㄴㄵㄶㄷㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅄㅅㅆㅇㅈㅊㅋㅌㅍㅎ"];
-function jamo(text: string): string[] {
-  return [...text].flatMap((ch) => {
-    if (!isSyllable(ch)) return [ch];
-    const i = ch.charCodeAt(0) - 0xac00;
-    return [CHO[Math.floor(i / 588)], JUNG[Math.floor((i % 588) / 28)], JONG[i % 28]].filter(Boolean);
-  });
-}
-/** 지운 게 아니라 새로 친 건지 — 지우다 목표 글자를 지나갈 때 다시 울리지 않게 */
-// 고→과 처럼 자모 수가 그대로여도 새로 친 것. 지운 경우만 지금 값이 이전 값의 앞부분이 된다
-export function typedMore(prev: string, cur: string) {
-  const a = jamo(prev).join(""), b = jamo(cur).join("");
-  return a !== b && !a.startsWith(b);
 }

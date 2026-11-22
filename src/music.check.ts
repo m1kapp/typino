@@ -1,6 +1,6 @@
 // node --experimental-strip-types src/music.check.ts
 import assert from "node:assert/strict";
-import { chord, fitChord, midi, parse, solfa, SONGS, typedMore } from "./music.ts";
+import { chord, fitChord, midi, parse, solfa, SONGS } from "./music.ts";
 
 assert.equal(midi("C4"), 60);
 assert.deepEqual(chord("C"), [36, 48, 52, 55]);
@@ -25,8 +25,6 @@ assert.equal(solfa("시", 60), 59);
 assert.equal(solfa("솔", 72), 67);
 assert.equal(solfa("가", 60), null);
 
-assert.equal(typedMore("소", "솔"), true);
-assert.equal(typedMore("솔", "소"), false);
 
 assert.equal(fitChord(67, "C"), "C");
 assert.equal(fitChord(69, "C"), "F");
