@@ -1,23 +1,28 @@
-// 곡의 음정은 정해져 있다. 가사를 한 글자 칠 때마다 다음 음이 나간다 — 피아노 치듯 타자 치면 노래가 된다.
+// 화면에 나온 계이름을 치면 그 음이 난다. 도레미를 치면 도레미가 — 자판이 건반이다.
 
-type Line = [lyric: string, notes: string];
-export type Song = { id: string; title: string; by: string; lines: Line[] };
+/** 음표는 "G4" 처럼, 마디 사이 띄어쓰기는 "/" 로. 화면에 보일 계이름은 여기서 만든다 */
+export type Song = { id: string; title: string; by: string; lines: string[] };
 
-// 선율은 저작권이 끝난 것만. 가사는 typino 가 새로 붙였다(음표 하나 = 한글 한 글자).
+// 선율은 저작권이 끝난 것만
 export const SONGS: Song[] = [
-  { id: "star", title: "작은 별", by: "프랑스 민요 · 가사 typino", lines: [
-    ["한 글자씩 쳐 보자", "C4 C4 G4 G4 A4 A4 G4"],
-    ["손끝에서 노래가", "F4 F4 E4 E4 D4 D4 C4"],
-    ["자판 위에 피아노", "G4 G4 F4 F4 E4 E4 D4"],
-    ["톡톡 치면 울려요", "G4 G4 F4 F4 E4 E4 D4"],
-    ["한 글자씩 쳐 보자", "C4 C4 G4 G4 A4 A4 G4"],
-    ["노래 되는 타자기", "F4 F4 E4 E4 D4 D4 C4"],
+  { id: "star", title: "작은 별", by: "프랑스 민요", lines: [
+    "C4 C4 G4 G4 / A4 A4 G4", "F4 F4 E4 E4 / D4 D4 C4",
+    "G4 G4 F4 F4 / E4 E4 D4", "G4 G4 F4 F4 / E4 E4 D4",
+    "C4 C4 G4 G4 / A4 A4 G4", "F4 F4 E4 E4 / D4 D4 C4",
   ] },
-  { id: "joy", title: "환희의 송가", by: "베토벤 · 가사 typino", lines: [
-    ["오늘 하루 수고했어 내 손가락 고마워", "E4 E4 F4 G4 G4 F4 E4 D4 C4 C4 D4 E4 E4 D4 D4"],
-    ["자판 위로 춤을 추면 한 곡조가 흐르네", "E4 E4 F4 G4 G4 F4 E4 D4 C4 C4 D4 E4 D4 C4 C4"],
-    ["틀려도 괜찮아 다시 또 치면 되니까 천천히", "D4 D4 E4 C4 D4 E4 F4 E4 C4 D4 E4 F4 E4 D4 C4 D4 G3"],
-    ["마지막 한 글자까지 우리 같이 노래해", "E4 E4 F4 G4 G4 F4 E4 D4 C4 C4 D4 E4 D4 C4 C4"],
+  { id: "lamb", title: "메리의 어린 양", by: "미국 민요", lines: [
+    "E4 D4 C4 D4 / E4 E4 E4", "D4 D4 D4 / E4 G4 G4",
+    "E4 D4 C4 D4 / E4 E4 E4", "D4 D4 E4 D4 / C4",
+  ] },
+  { id: "joy", title: "환희의 송가", by: "베토벤", lines: [
+    "E4 E4 F4 G4 / G4 F4 E4 D4 / C4 C4 D4 E4 / E4 D4 D4",
+    "E4 E4 F4 G4 / G4 F4 E4 D4 / C4 C4 D4 E4 / D4 C4 C4",
+    "D4 D4 E4 C4 / D4 E4 F4 E4 C4 / D4 E4 F4 E4 D4 / C4 D4 G3",
+    "E4 E4 F4 G4 / G4 F4 E4 D4 / C4 C4 D4 E4 / D4 C4 C4",
+  ] },
+  { id: "birthday", title: "생일 축하", by: "힐 자매", lines: [
+    "G4 G4 A4 G4 / C5 B4", "G4 G4 A4 G4 / D5 C5",
+    "G4 G4 G5 E5 / C5 B4 A4", "F5 F5 E5 C5 / D5 C5",
   ] },
 ];
 
@@ -43,11 +48,26 @@ export function thirdBelow(n: number): number {
 
 export const isSyllable = (ch: string | undefined) => !!ch && ch >= "가" && ch <= "힣";
 
-/** 가사 i 번째 글자에 붙은 음. 글자가 아니면(공백 등) null */
-export function noteAt(line: Line, i: number): number | null {
-  if (!isSyllable(line[0][i])) return null;
-  const k = [...line[0].slice(0, i)].filter(isSyllable).length;
-  return midi(line[1].split(" ")[k]);
+const SOLFA = "도_레_미파_솔_라_시"; // 반음 자리는 _ — C장조 흰건반만
+
+/** 줄 데이터 → 화면에 칠 계이름 글과 글자 자리별 음 */
+export function parse(line: string): { text: string; notes: (number | null)[] } {
+  let text = "";
+  const notes: (number | null)[] = [];
+  for (const tok of line.split(" ")) {
+    if (tok === "/") { text += " "; notes.push(null); continue; }
+    const n = midi(tok);
+    text += SOLFA[n % 12];
+    notes.push(n);
+  }
+  return { text, notes };
+}
+
+/** 친 계이름 글자 → 음. 옥타브는 그 자리 목표 음에 가장 가까운 쪽 */
+export function solfa(ch: string, near: number): number | null {
+  const pc = SOLFA.indexOf(ch);
+  if (pc < 0 || ch === "_") return null;
+  return near + ((((pc - (near % 12)) % 12) + 18) % 12) - 6;
 }
 
 const CHO = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ";

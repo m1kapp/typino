@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { AppShell, AppShellContent, AppShellHeader, Section, SegmentedControl, Watermark } from "@m1kapp/kit";
-import { noteAt, noteName, SONGS, thirdBelow, typedMore } from "./music";
+import { noteName, parse, solfa, SONGS, thirdBelow, typedMore } from "./music";
 import { play, unlock } from "./audio";
 
 const ACCENT = "#c2410c";
@@ -31,8 +31,8 @@ function Player() {
   const input = useRef<HTMLInputElement>(null);
 
   const song = SONGS.find((s) => s.id === songId)!;
-  const line = song.lines[row];
-  const lyric = line?.[0];
+  const line = song.lines[row] ? parse(song.lines[row]) : null;
+  const lyric = line?.text ?? "";
   const done = value.length - 1; // 마지막 글자는 아직 조합 중일 수 있어 판정하지 않는다
 
   const start = () => {
@@ -57,14 +57,13 @@ function Player() {
 
   const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = e.target.value;
-    // 가사 한 글자를 다 치는 순간 그 글자에 붙은 음이 바로 나간다
+    // 계이름 한 글자를 다 치는 순간 그 음이 바로 난다. 틀린 계이름도 친 대로 — 건반처럼
     const i = (e.target.selectionStart ?? v.length) - 1;
     const ch = v[i];
     if (line && typedMore(value, v) && ch) {
-      const note = noteAt(line, i);
-      if (ch === lyric[i] && note !== null) ding(ch, note);
-      // 목표와 다른 채로 다음 글자로 넘어가면 그 글자는 틀린 것 — 낮게 툭
-      else if (v.length > value.length && v[i - 1] && v[i - 1] !== lyric[i - 1]) play(37, 0, 0.15, 0.25);
+      const near = line.notes.slice(0, i + 1).filter((n) => n != null).pop() ?? 60;
+      const note = ch === lyric[i] && line.notes[i] != null ? line.notes[i] : solfa(ch, near);
+      if (note != null) ding(ch, note);
     }
 
     // 줄을 다 치고 스페이스 → 다음 줄. 스페이스로 조합이 끝난 뒤라 비워도 글자가 안 남는다
@@ -106,7 +105,7 @@ function Player() {
             <span className="text-zinc-900">끝 — 한 곡 완주!</span>
           )}
         </div>
-        <div className="min-h-6 text-base text-zinc-300">{song.lines[row + 1]?.[0] ?? ""}</div>
+        <div className="min-h-6 text-base text-zinc-300">{song.lines[row + 1] ? parse(song.lines[row + 1]).text : ""}</div>
       </div>
 
       {line ? (
@@ -120,7 +119,7 @@ function Player() {
             autoCapitalize="off"
             spellCheck={false}
             enterKeyHint="next"
-            placeholder="가사를 치면 노래가 나와요 · 줄 끝에서 스페이스"
+            placeholder="계이름을 치면 그 음이 나요 · 줄 끝에서 스페이스"
             className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3.5 text-xl outline-none focus:border-[var(--kit-accent)]"
           />
           {!started && (
@@ -148,8 +147,8 @@ function Player() {
       </div>
 
       <p className="text-xs leading-relaxed text-zinc-400">
-        곡의 음정은 정해져 있어요. 가사 한 글자를 칠 때마다 다음 음이 나가서, 치는 빠르기가 곧 노래의 박자가 됩니다.
-        틀린 글자는 소리 대신 툭.
+        자판이 건반이에요. 도·레·미를 치면 도·레·미가 나고, 치는 빠르기가 곧 노래의 박자가 됩니다.
+        틀린 계이름도 친 대로 울려요.
       </p>
     </Section>
   );
